@@ -6,134 +6,61 @@ import path from "path";
 import axios from "axios";
 import FormData from "form-data";
 
-/* import { extractPdfPages } from "../services/pdfToImages.js";
-import { embedImages } from "../embeddings/voyage.js"; */
 import { pc } from "../vectorstore/pinecone.js";
-import { embedImages } from "../embeddings/voyage.js";
+import { createEmbeddings } from "../embeddings/voyage.js";
+import { chunkedData } from "../embeddings/processedData.js";
 
 const upload = multer({ dest: "uploads/" });
 const router = express.Router();
-
-/* router.post("/ingest", upload.single("pdf"), async (req, res) => {
-  try {
-    const pdfPath = req.file.path;
-    const imagePaths = await convertPdfToImages(pdfPath);
-
-    const buffers = await Promise.all(imagePaths.map((p) => fs.readFile(p)));
-
-    const base64Images = buffers.map((buffer) => {
-      const base64String = buffer.toString("base64");
-      const fullDataUrl = `data:image/png;base64,${base64String}`;
-
-      return {
-        type: "image_base64",
-        image_base64: fullDataUrl,
-      };
-    });
-
-    const embeddings = await embedImages(base64Images);
-    const index = pc.Index("pdf-embeddings");
-
-    const vectors = embeddings.map((e, i) => ({
-      id: `${req.file.filename}_p${i + 1}`,
-      values: e.embedding,
-      metadata: {
-        docId: req.file.filename,
-        page: i + 1,
-      },
-    }));
-
-    await index.upsert(vectors);
-
-    res.json({ status: "success", pages: vectors.length });
-  } catch (e) {
-    console.error(e);
-    res.status(500).send("Failed to process PDF");
-  }
-}); */
-
-/* router.post("/ingest", upload.single("pdf"), async (req, res) => {
-  try {
-    const pdfPath = req.file.path;
-    console.log("pdfPath", pdfPath);
-
-    const extractedPages = await extractPdfPages(pdfPath);
-
-    const inputs = await Promise.all(
-      extractedPages.map(async (page) => {
-        const buffer = await fs.readFile(page.imagePath);
-        const base64 = buffer.toString("base64");
-        return {
-          content: [
-            { type: "text", text: page.text || "" },
-            {
-              type: "image_base64",
-              image_base64: `data:image/png;base64,${base64}`,
-            },
-          ],
-        };
-      })
-    );
-
-    console.log("inputs", inputs);
-
-    const embeddings = await embedImages(inputs);
-    const index = pc.Index("pdf-embeddings");
-
-    const vectors = embeddings.map((e, i) => ({
-      id: `${req.file.filename}_p${i + 1}`,
-      values: e.embedding,
-      metadata: {
-        docId: req.file.filename,
-        page: i + 1,
-        text: extractedPages[i].text, 
-      },
-    }));
-
-    await index.upsert({ vectors });
-
-    res.json({ status: "success", pages: vectors.length });
-  } catch (e) {
-    console.error(e);
-    res.status(500).send("Failed to process PDF");
-  }
-}); */
 
 router.post("/ingest", upload.single("file"), async (req, res) => {
   try {
     const filePath = req.file.path;
 
+    // Get overlap parameters from request body or use defaults
+    const overlapPercentage = req.body.overlap_percentage || 0.2;
+    const overlapStrategy = req.body.overlap_strategy || "characters";
+
     // Prepare form-data for Python API
     const form = new FormData();
     form.append("file", fs.createReadStream(filePath));
 
-    const response = await axios.post("http://localhost:8000/process", form, {
+    // Build URL with query parameters
+    const pythonApiUrl = `http://localhost:8000/process?overlap_percentage=${overlapPercentage}&overlap_strategy=${overlapStrategy}`;
+
+    const response = await axios.post(pythonApiUrl, form, {
       headers: form.getHeaders(),
     });
 
     // Process the result from Python
-    /* const processedPages = response.data; */
+    const processedPages = response.data.chunks;
+    const jsonFilePath = response.data.json_file_path;
 
-    const result = response.data;
-
-    return res.json({
-      status: "success",
-      result: result,
-    });
+    console.log(`Processed data saved to: ${jsonFilePath}`);
 
     console.log("Embedding process reached...");
-    const embeddings = await embedImages(processedPages);
+    const embeddings = await createEmbeddings(processedPages);
     console.log("Embedding process completed...");
-    const index = pc.Index("b64-pdf");
+    const index = pc.Index("rag-data");
 
-    const vectors = embeddings.map((e, i) => ({
-      id: `${req.file.filename}_p${i + 1}`,
-      values: e.embedding,
-      metadata: {
-        docId: req.file.filename,
-        page: i + 1,
-      },
-    }));
+    const vectors = embeddings.map((e, i) => {
+      const pageData = processedPages[i];
+
+      return {
+        id: `${req.file.filename}_p${i + 1}`,
+        values: e.embedding,
+        metadata: {
+          docId: req.file.filename,
+          page: pageData.page,
+          text: pageData.text, // ← RAG retrieval context
+          image_url: pageData.image_data_url, // ← Optional for UI or inspection
+          has_overlap: pageData.has_overlap,
+          overlap_length: pageData.overlap_length,
+          overlap_strategy: pageData.overlap_strategy,
+          overlap_percentage: pageData.overlap_percentage,
+        },
+      };
+    });
 
     await index.upsert(vectors);
 
@@ -145,6 +72,44 @@ router.post("/ingest", upload.single("file"), async (req, res) => {
     });
   } catch (e) {
     console.error(e);
+    res.status(500).send("Failed to process PDF");
+  }
+});
+
+router.post("/ingest-chunked", async (req, res) => {
+  try {
+    console.log("Embedding process started...");
+    const embeddings = await createEmbeddings(chunkedData);
+    console.log("Embedding process completed...");
+    const index = pc.Index("rag-data");
+
+    const vectors = embeddings.map((e, i) => {
+      const pageData = chunkedData[i];
+
+      return {
+        id: `${req.file.filename}_p${i + 1}`,
+        values: e.embedding,
+        metadata: {
+          docId: req.file.filename,
+          page: pageData.page,
+          text: pageData.text, // ← RAG retrieval context
+          image_url: pageData.image_data_url, // ← Optional for UI or inspection
+          has_overlap: pageData.has_overlap,
+          overlap_length: pageData.overlap_length,
+          overlap_strategy: pageData.overlap_strategy,
+          overlap_percentage: pageData.overlap_percentage,
+        },
+      };
+    });
+
+    await index.upsert(vectors);
+
+    res.json({
+      status: "success",
+      data: embeddings,
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).send("Failed to process PDF");
   }
 });
