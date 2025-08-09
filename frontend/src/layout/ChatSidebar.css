@@ -1,16 +1,17 @@
 .chat-sidebar {
-  width: 25%;
+  width: 100%;
   background-color: #ffffff;
-  border-right: 1px solid #e1e5e9;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar-header {
   padding: 20px;
   border-bottom: 1px solid #e1e5e9;
   background-color: #f8f9fa;
+  flex-shrink: 0;
 }
 
 .sidebar-header h2 {
@@ -40,6 +41,7 @@
 .chat-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 10px 0;
 }
 
@@ -48,6 +50,12 @@
   cursor: pointer;
   transition: background-color 0.2s ease;
   border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .chat-item:hover {
@@ -63,6 +71,43 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chat-item:hover .chat-actions {
+  opacity: 1;
+}
+
+.chat-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.chat-action-btn:hover {
+  background-color: #e9ecef;
+}
+
+.edit-btn:hover {
+  background-color: #fff3cd;
+}
+
+.delete-btn:hover {
+  background-color: #f8d7da;
 }
 
 .chat-title {
@@ -71,6 +116,9 @@
   font-weight: 600;
   color: #1a1a1a;
   line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-preview {
@@ -114,4 +162,58 @@
   .chat-list {
     max-height: 120px;
   }
+}
+
+.edit-title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.edit-title-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  background-color: white;
+  outline: none;
+}
+
+.edit-title-input:focus {
+  border-color: #0056b3;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.edit-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.edit-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-size: 12px;
+  transition: background-color 0.2s ease;
+}
+
+.save-btn {
+  color: #28a745;
+}
+
+.save-btn:hover {
+  background-color: #d4edda;
+}
+
+.cancel-btn {
+  color: #dc3545;
+}
+
+.cancel-btn:hover {
+  background-color: #f8d7da;
 }

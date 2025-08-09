@@ -39,28 +39,13 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (inputMessage.trim() || imageFile) {
-      // If there's an image, send it as a message (simulate for now)
-      if (imageFile) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          onSendMessage({
-            type: "image",
-            content: event.target.result,
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          });
-        };
-        reader.readAsDataURL(imageFile);
-        setImageFile(null);
-        setImagePreview(null);
-      }
-      // If there's text, send it as a message
-      if (inputMessage.trim()) {
-        onSendMessage(inputMessage);
-        setInputMessage("");
-      }
+      // Send message with image file if present
+      onSendMessage(inputMessage.trim(), imageFile);
+
+      // Clear the form
+      setInputMessage("");
+      setImageFile(null);
+      setImagePreview(null);
     }
   };
 
@@ -79,7 +64,7 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   return (
     <div className="chat-view">
       <div className="chat-header">
-        <h2>{activeChat?.title || "New Chat"}</h2>
+        <h2>{`${activeChat?.title} ${activeChat?.id}` || "New Chat"}</h2>
       </div>
 
       <div className="messages-container">
@@ -95,26 +80,42 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
           <div className="messages-list">
             {messages.map((message) => (
               <div
-                key={message.id}
+                key={message._id}
                 className={`message ${
-                  message.type === "user"
-                    ? "user-message"
-                    : message.type === "image"
-                    ? "user-message"
-                    : "assistant-message"
+                  message.role === "user" ? "user-message" : "assistant-message"
                 }`}
               >
                 <div className="message-content">
-                  {message.type === "image" ? (
-                    <img
-                      src={message.content}
-                      alt="uploaded"
-                      className="chat-image-preview"
-                    />
+                  {message.role === "user" &&
+                  message.content &&
+                  message.content.length > 0 ? (
+                    // User message - can have text and/or image
+                    <>
+                      {message.content[0].text && (
+                        <p>{message.content[0].text}</p>
+                      )}
+                      {message.content[0].image_url && (
+                        <img
+                          src={message.content[0].image_url}
+                          alt="uploaded"
+                          className="chat-image-preview"
+                        />
+                      )}
+                    </>
+                  ) : message.role === "assistant" &&
+                    message.content &&
+                    message.content.length > 0 ? (
+                    // Assistant message - text only
+                    <p>{message.content[0].text}</p>
                   ) : (
-                    <p>{message.content}</p>
+                    <p>Message content not available</p>
                   )}
-                  <span className="message-timestamp">{message.timestamp}</span>
+                  <span className="message-timestamp">
+                    {new Date(message.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                 </div>
               </div>
             ))}

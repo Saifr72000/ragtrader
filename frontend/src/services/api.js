@@ -2,24 +2,50 @@ const API_BASE_URL = "http://localhost:3000/api";
 
 export const apiService = {
   // Send a message to the chat API
-  async sendMessage(message, chatId = null) {
+  async sendMessage(message, chatId = null, imageFile = null) {
     try {
-      const response = await fetch(`${API_BASE_URL}/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message,
-          chatId,
-        }),
-      });
+      let response;
+
+      if (imageFile) {
+        // Handle image upload
+        const formData = new FormData();
+        formData.append("chatId", chatId);
+        formData.append("role", "user");
+        formData.append("content[text]", message);
+        formData.append("content[file]", imageFile);
+        formData.append("folder", "queries");
+
+        response = await fetch(`${API_BASE_URL}/message`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        // Handle text-only message
+        response = await fetch(`${API_BASE_URL}/message`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chatId,
+            role: "user",
+            content: {
+              text: message,
+              image_url: null,
+            },
+          }),
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      return {
+        reply: data.reply,
+        retrievedChunks: data.retrievedChunks || [],
+      };
     } catch (error) {
       console.error("Error sending message:", error);
       throw error;
@@ -29,7 +55,8 @@ export const apiService = {
   // Get chat history
   async getChatHistory() {
     try {
-      const response = await fetch(`${API_BASE_URL}/chats`);
+      const response = await fetch(`${API_BASE_URL}/chat`);
+      console.log("response", response);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -45,13 +72,14 @@ export const apiService = {
   // Get messages for a specific chat
   async getChatMessages(chatId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/chats/${chatId}/messages`);
+      const response = await fetch(`${API_BASE_URL}/chat/${chatId}`);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      return data.messages; // Return just the messages array
     } catch (error) {
       console.error("Error fetching chat messages:", error);
       throw error;
@@ -61,7 +89,7 @@ export const apiService = {
   // Create a new chat
   async createChat(title = "New Chat") {
     try {
-      const response = await fetch(`${API_BASE_URL}/chats`, {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

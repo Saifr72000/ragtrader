@@ -4,11 +4,99 @@
   background-color: #f8f9fa;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
     sans-serif;
+  position: relative;
+}
+
+/* Top control bar */
+.top-control-bar {
+  position: fixed;
+  top: 6px;
+  right: 10px;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-control-bar-line {
+  height: 2px;
+  width: 200px;
+  background-color: #e1e5e9;
+  border-radius: 2px;
+}
+
+.top-control-icons {
+  display: flex;
+  gap: 6px;
+}
+
+.control-icon-btn {
+  background: #fff;
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  padding: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.control-icon-btn:hover {
+  background-color: #f1f3f5;
+}
+
+.chat-sidebar-container {
+  position: relative;
+  background-color: #ffffff;
+  border-right: 1px solid #e1e5e9;
+  overflow: hidden;
+}
+
+.resize-handle {
+  position: relative;
+  background-color: #e1e5e9;
+  cursor: col-resize;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.resize-handle:hover {
+  background-color: #007bff;
+}
+
+.resize-handle.dragging {
+  background-color: #007bff;
+}
+
+.chat-view-container {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0; /* Allow flex item to shrink below content size */
+}
+
+.retrieved-chunks-sidebar-container {
+  position: relative;
+  background-color: #ffffff;
+  border-left: 1px solid #e1e5e9;
+  overflow: hidden;
+  flex-shrink: 0; /* Prevent sidebar from shrinking */
 }
 
 /* Responsive design */
 @media (max-width: 768px) {
   .app-layout {
     flex-direction: column;
+  }
+
+  .chat-sidebar-container {
+    width: 100% !important;
+    height: 50vh;
+  }
+
+  .retrieved-chunks-sidebar-container {
+    width: 100% !important;
+    height: 50vh;
+  }
+
+  .resize-handle {
+    display: none;
   }
 }

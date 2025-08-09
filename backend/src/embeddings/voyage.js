@@ -5,18 +5,24 @@ import { pc } from "../vectorstore/pinecone.js";
 
 export const createEmbeddings = async (chunks) => {
   console.log("embedding begun");
-  const inputs = chunks.map((chunk) => ({
-    content: [
+  const inputs = chunks.map((chunk) => {
+    const content = [
       {
         type: "text",
         text: chunk.text,
       },
-      {
+    ];
+
+    // Only add image_url if it exists
+    if (chunk.image_data_url) {
+      content.push({
         type: "image_url",
         image_url: chunk.image_data_url,
-      },
-    ],
-  }));
+      });
+    }
+
+    return { content };
+  });
 
   try {
     const response = await axios.post(

@@ -1,6 +1,7 @@
-from fastapi import FastAPI, UploadFile, Query
+from fastapi import FastAPI, UploadFile, Query, File, Form
 from fastapi.responses import JSONResponse
 from utils.pdf_processor import extract_pdf_data, analyze_overlap_effectiveness
+from utils.gcs_uploader import upload_image_to_gcs
 
 app = FastAPI()
 
@@ -66,3 +67,14 @@ async def analyze_overlap(
         "sample_chunks": result[:2] if len(result) >= 2 else result,  # Include first 2 chunks as samples
         "json_file_path": json_path
     })
+
+
+@app.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    folder: str = Form("images")
+):
+   
+   image_bytes = await file.read()
+   url = upload_image_to_gcs(image_bytes, "candlestick_bible", folder=folder)
+   return {"url": url}
