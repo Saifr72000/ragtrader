@@ -37,16 +37,42 @@ const AppLayout = () => {
 
         if (chatHistory && chatHistory.length > 0) {
           // Transform backend data to match frontend format
-          const transformedChats = chatHistory.map((chat, index) => ({
+          let transformedChats = chatHistory.map((chat) => ({
             id: chat._id,
             title: chat.title,
             lastMessage: chat.lastMessage || "Start a new conversation...",
             timestamp: chat.updatedAt,
-            isActive: index === 0, // First chat is active by default
+            isActive: false,
+          }));
+
+          // Prefer previously active chat if present
+          const savedChatId = localStorage.getItem("activeChatId");
+          const hasSaved =
+            savedChatId &&
+            transformedChats.some((c) => String(c.id) === String(savedChatId));
+          const initialChatId = hasSaved ? savedChatId : transformedChats[0].id;
+
+          transformedChats = transformedChats.map((c) => ({
+            ...c,
+            isActive: String(c.id) === String(initialChatId),
           }));
 
           setChats(transformedChats);
-          setActiveChatId(transformedChats[0].id);
+          setActiveChatId(initialChatId);
+          localStorage.setItem("activeChatId", initialChatId);
+
+          // Load messages for the initially active chat
+          try {
+            const chatMessages = await apiService.getChatMessages(
+              initialChatId
+            );
+            setMessages(
+              chatMessages && chatMessages.length > 0 ? chatMessages : []
+            );
+          } catch (err) {
+            console.error("Error loading initial chat messages:", err);
+            setMessages([]);
+          }
         }
       } catch (error) {
         console.error("Error loading chats:", error);
@@ -111,6 +137,7 @@ const AppLayout = () => {
 
   const handleChatSelect = (chatId) => {
     setActiveChatId(chatId);
+    localStorage.setItem("activeChatId", chatId);
 
     // Load messages for the selected chat from backend
     const loadChatMessages = async () => {
@@ -272,7 +299,6 @@ const AppLayout = () => {
     <div className="app-layout">
       {/* Top control bar */}
       <div className="top-control-bar">
-        <div className="top-control-bar-line" />
         <div className="top-control-icons">
           <button
             className="control-icon-btn"

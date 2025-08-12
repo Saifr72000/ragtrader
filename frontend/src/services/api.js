@@ -52,6 +52,29 @@ export const apiService = {
     }
   },
 
+  // Fetch Polygon candlestick bars and return only the results array (GET with query params)
+  async fetchPolygonBars({
+    fromDate,
+    toDate,
+    timespan = "day",
+    multiplier = 1,
+    limit = 120,
+  }) {
+    const params = new URLSearchParams({
+      fromDate,
+      toDate,
+      timespan,
+      multiplier: String(multiplier),
+      limit: String(limit),
+    });
+    const resp = await fetch(`${API_BASE_URL}/polygon?${params.toString()}`);
+    if (!resp.ok) {
+      throw new Error(`Polygon fetch failed: ${resp.status}`);
+    }
+    const data = await resp.json();
+    return Array.isArray(data?.results) ? data.results : [];
+  },
+
   // Get chat history
   async getChatHistory() {
     try {

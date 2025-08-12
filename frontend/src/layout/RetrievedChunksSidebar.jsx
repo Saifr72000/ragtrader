@@ -25,14 +25,9 @@ const RetrievedChunksSidebar = ({ retrievedChunks, isVisible, onToggle }) => {
             <div key={index} className="chunk-item">
               <div className="chunk-header">
                 <span className="chunk-number">Page {chunk.page}</span>
-                {chunk.image_url && (
-                  <span className="chunk-type">📷 Image</span>
-                )}
               </div>
 
               <div className="chunk-text">{chunk.text}</div>
-
-              <span className="chunk-number"> {chunk.image_url}</span>
 
               {chunk.image_url && (
                 <div className="chunk-image">
@@ -45,6 +40,7 @@ const RetrievedChunksSidebar = ({ retrievedChunks, isVisible, onToggle }) => {
                   />
                 </div>
               )}
+              <p className="image-url"> {chunk.image_url}</p>
 
               {chunk.metadata && (
                 <div className="chunk-metadata">
