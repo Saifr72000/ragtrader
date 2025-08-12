@@ -277,8 +277,8 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                     setBarsConfig((c) => ({ ...c, timespan: e.target.value }))
                   }
                 >
-                  <option value="day">day</option>
                   <option value="minute">minute</option>
+                  <option value="day">day</option>
                 </select>
                 <label>Multiplier</label>
                 <input
