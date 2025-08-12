@@ -86,52 +86,43 @@ const AppLayout = () => {
     loadChats();
   }, []);
 
-  const handleNewChat = async (message, imageFile = null) => {
+  const handleNewChat = async () => {
     try {
-      // Create user message object for immediate display
-      const userMessage = {
-        _id: `temp-${Date.now()}`, // Temporary ID
-        role: "user",
-        content: [
-          {
-            text: message,
-            image_url: imageFile ? URL.createObjectURL(imageFile) : null,
-          },
-        ],
-        timestamp: new Date().toISOString(),
-        isPending: true, // Flag to indicate this is a pending message
+      const response = await apiService.createChat("New Chat");
+      const newChat = {
+        id: response.id || response._id || Date.now(),
+        title: response.title || "New Chat",
+        lastMessage: "Start a new conversation...",
+        timestamp: response.updatedAt || "Just now",
+        isActive: true,
       };
 
-      // Add user message immediately to the UI
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
+      // Deactivate others and prepend new chat
+      setChats((prev) => {
+        const updated = prev.map((c) => ({ ...c, isActive: false }));
+        return [newChat, ...updated];
+      });
 
-      // Send message to backend
-      const response = await apiService.sendMessage(
-        message,
-        activeChatId,
-        imageFile
-      );
-
-      // Store retrieved chunks for the right sidebar
-      if (response.retrievedChunks) {
-        setRetrievedChunks(response.retrievedChunks);
-        setIsRightSidebarVisible(true);
-      }
-
-      // Reload messages to get the updated conversation with both user and assistant messages
-      const chatMessages = await apiService.getChatMessages(activeChatId);
-      if (chatMessages && chatMessages.length > 0) {
-        setMessages(chatMessages);
-      }
+      setActiveChatId(newChat.id);
+      localStorage.setItem("activeChatId", newChat.id);
+      setMessages([]);
     } catch (error) {
-      console.error("Error sending message:", error);
-
-      // Remove the pending message if there was an error
-      setMessages((prevMessages) =>
-        prevMessages.filter((msg) => !msg.isPending)
-      );
-
-      // You could show an error message to the user here
+      console.error("Error creating new chat:", error);
+      // Fallback local chat
+      const fallback = {
+        id: Date.now(),
+        title: "New Chat",
+        lastMessage: "Start a new conversation...",
+        timestamp: "Just now",
+        isActive: true,
+      };
+      setChats((prev) => [
+        { ...fallback },
+        ...prev.map((c) => ({ ...c, isActive: false })),
+      ]);
+      setActiveChatId(fallback.id);
+      localStorage.setItem("activeChatId", fallback.id);
+      setMessages([]);
     }
   };
 
@@ -175,8 +166,22 @@ const AppLayout = () => {
         isPending: true, // Flag to indicate this is a pending message
       };
 
-      // Add user message immediately to the UI
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
+      // Assistant placeholder to show hourglass while waiting
+      const assistantPlaceholderId = `temp-assistant-${Date.now()}`;
+      const assistantPlaceholder = {
+        _id: assistantPlaceholderId,
+        role: "assistant",
+        content: [{ text: "" }],
+        timestamp: new Date().toISOString(),
+        isPending: true,
+      };
+
+      // Add user message and assistant placeholder immediately to the UI
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        userMessage,
+        assistantPlaceholder,
+      ]);
 
       // Send message to backend
       const response = await apiService.sendMessage(
@@ -191,7 +196,7 @@ const AppLayout = () => {
         setIsRightSidebarVisible(true);
       }
 
-      // Reload messages to get the updated conversation with both user and assistant messages
+      // Reload messages to replace the placeholder with the real assistant reply
       const chatMessages = await apiService.getChatMessages(activeChatId);
       if (chatMessages && chatMessages.length > 0) {
         setMessages(chatMessages);
@@ -199,7 +204,7 @@ const AppLayout = () => {
     } catch (error) {
       console.error("Error sending message:", error);
 
-      // Remove the pending message if there was an error
+      // Remove any pending placeholders if there was an error
       setMessages((prevMessages) =>
         prevMessages.filter((msg) => !msg.isPending)
       );
