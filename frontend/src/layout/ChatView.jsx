@@ -16,7 +16,7 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [barsConfig, setBarsConfig] = useState({
     fromDate: "2025-08-08",
     toDate: "2025-08-08",
-    timespan: "minutes",
+    timespan: "minute",
     multiplier: 1,
     limit: 60,
   });

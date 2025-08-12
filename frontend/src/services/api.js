@@ -53,21 +53,15 @@ export const apiService = {
   },
 
   // Fetch Polygon candlestick bars and return only the results array (GET with query params)
-  async fetchPolygonBars({
-    fromDate,
-    toDate,
-    timespan = "day",
-    multiplier = 1,
-    limit = 120,
-  }) {
+  async fetchPolygonBars({ fromDate, toDate, timespan, multiplier, limit }) {
     const params = new URLSearchParams({
       fromDate,
       toDate,
       timespan,
-      multiplier: String(multiplier),
-      limit: String(limit),
+      multiplier: parseInt(multiplier),
+      limit: parseInt(limit),
     });
-    const resp = await fetch(`${API_BASE_URL}/polygon?${params.toString()}`);
+    const resp = await fetch(`${API_BASE_URL}/polygon?${params}`);
     if (!resp.ok) {
       throw new Error(`Polygon fetch failed: ${resp.status}`);
     }
