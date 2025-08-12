@@ -1,7 +1,7 @@
 import axios from "axios";
 import { restClient } from "@polygon.io/client-js";
 
-const apiKey = "O2Z4tlsyYuO00SwjXPpfA1dvDM00poDX";
+const apiKey = process.env.POLYGON_API_KEY;
 
 export const fetchPolygonData = async (req, res) => {
   const {

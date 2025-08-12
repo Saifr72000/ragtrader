@@ -9,6 +9,9 @@ import messageRoutes from "./routes/message.route.js";
 import polygonRoutes from "./routes/polygon.route.js";
 import cors from "cors";
 
+// Load environment variables
+dotenv.config();
+
 const app = express();
 
 // CORS configuration
@@ -37,9 +40,7 @@ app.get("/", (req, res) => {
   res.send("🚀 Server is running");
 });
 
-const MONGO_URI =
-  process.env.MONGO_DB_URL ||
-  "mongodb+srv://saif:QpweWa3Bu9j7X6P2@cluster0.b3uviwl.mongodb.net/ragtrader?retryWrites=true&w=majority";
+const MONGO_URI = process.env.MONGO_DB_URL;
 
 const connectDB = async () => {
   const maxRetries = 3;

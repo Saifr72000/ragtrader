@@ -4,8 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const pc = new Pinecone({
-  apiKey:
-    "pcsk_2MTGZN_Cs4L4bUWBQgRVyscdCouzbjMNgj26agPDguaYDeKVc6aTeS4bATkjnKXp8J9iC9",
+  apiKey: process.env.PINECONE_API_KEY,
 });
 
 export const createIndex = async (indexName) => {

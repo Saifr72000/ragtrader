@@ -24,7 +24,7 @@ export const createEmbeddings = async (chunks) => {
       },
       {
         headers: {
-          Authorization: `Bearer pa-Is5UHe1I_nUuqlYyhpbtqa5s5SfLHLaQkPRGXtJJJB5`,
+          Authorization: `Bearer ${process.env.VOYAGE_API_KEY}`,
           "Content-Type": "application/json",
         },
       }

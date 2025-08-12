@@ -3,8 +3,7 @@ import axios from "axios";
 import { systemPrompt } from "../utils/openai.utils.js";
 
 const openai = new OpenAI({
-  apiKey:
-    "<REDACTED>",
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export const runChatCompletion = async ({ systemPrompt, messages }) => {

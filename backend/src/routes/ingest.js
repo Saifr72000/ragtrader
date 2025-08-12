@@ -8,7 +8,6 @@ import FormData from "form-data";
 
 import { pc } from "../vectorstore/pinecone.js";
 import { createEmbeddings } from "../embeddings/voyage.js";
-import { chunkedData } from "../embeddings/processedData.js";
 
 const upload = multer({ dest: "uploads/" });
 const router = express.Router();

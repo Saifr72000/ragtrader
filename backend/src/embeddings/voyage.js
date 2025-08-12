@@ -1,6 +1,4 @@
 import axios from "axios";
-import { chunkedData } from "./processedData.js";
-import { firstChunks, secondChunks } from "./test.js";
 import { pc } from "../vectorstore/pinecone.js";
 
 export const createEmbeddings = async (chunks) => {
@@ -34,7 +32,7 @@ export const createEmbeddings = async (chunks) => {
       },
       {
         headers: {
-          Authorization: `Bearer pa-Is5UHe1I_nUuqlYyhpbtqa5s5SfLHLaQkPRGXtJJJB5`,
+          Authorization: `Bearer ${process.env.VOYAGE_API_KEY}`,
           "Content-Type": "application/json",
         },
       }
