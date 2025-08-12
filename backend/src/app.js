@@ -6,6 +6,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import chatRoutes from "./routes/chat.route.js";
 import messageRoutes from "./routes/message.route.js";
+import polygonRoutes from "./routes/polygon.route.js";
 import cors from "cors";
 
 const app = express();
@@ -30,6 +31,7 @@ app.use(cookieParser());
 app.use("/api", ingestRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/message", messageRoutes);
+app.use("/api/polygon", polygonRoutes);
 
 app.get("/", (req, res) => {
   res.send("🚀 Server is running");

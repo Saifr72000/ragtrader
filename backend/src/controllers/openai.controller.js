@@ -10,7 +10,7 @@ const openai = new OpenAI({
 export const runChatCompletion = async ({ systemPrompt, messages }) => {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [{ role: "system", content: systemPrompt }, ...messages],
     });
 
@@ -30,7 +30,7 @@ export const openTest = async (req, res) => {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5",
       messages: [
         {
           role: "user",
