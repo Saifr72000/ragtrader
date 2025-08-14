@@ -278,6 +278,7 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                   }
                 >
                   <option value="minute">minute</option>
+                  <option value="second">second</option>
                   <option value="day">day</option>
                 </select>
                 <label>Multiplier</label>
