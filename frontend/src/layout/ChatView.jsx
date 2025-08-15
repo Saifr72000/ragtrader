@@ -14,16 +14,25 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [isBarsPopupOpen, setIsBarsPopupOpen] = useState(false);
   const [isBarsLoading, setIsBarsLoading] = useState(false);
   const [barsConfig, setBarsConfig] = useState({
+    ticker: "X:BTCUSD",
     fromDate: "2025-08-08",
     toDate: "2025-08-08",
     timespan: "minute",
     multiplier: 1,
-    limit: 60,
+    limit: 5000,
+    fromTime: "00:00",
+    toTime: "23:59",
+    tz: "UTC",
+    mode: "window", // retained but we use only window now
+    lastN: 60,
   });
-  const [barsSlim, setBarsSlim] = useState([]); // fetched slim bars
-  const [barsBlock, setBarsBlock] = useState(""); // ready-to-insert text block
-  const [previewText, setPreviewText] = useState("");
+  const [barsSlim, setBarsSlim] = useState([]); // filtered bars for attach
+  const [barsBlock, setBarsBlock] = useState("");
+  const [previewText, setPreviewText] = useState(""); // kept for compatibility (filtered)
   const previewRef = useRef(null);
+  const [rawBars, setRawBars] = useState([]);
+  const [rawPreviewText, setRawPreviewText] = useState("");
+  const rawPreviewRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,15 +52,16 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
     }
   }, [inputMessage]);
 
-  // Autosize preview area
+  // Autosize preview areas (best-effort)
   useEffect(() => {
-    if (previewRef.current) {
-      const el = previewRef.current;
-      el.style.height = "auto";
-      const maxHeight = 320; // px
-      el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
-    }
-  }, [previewText, isBarsPopupOpen]);
+    [previewRef.current, rawPreviewRef.current].forEach((el) => {
+      if (el) {
+        el.style.height = "auto";
+        const maxHeight = 360; // px
+        el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
+      }
+    });
+  }, [previewText, rawPreviewText, isBarsPopupOpen]);
 
   // Handle image drop
   const onDrop = useCallback((acceptedFiles) => {
@@ -94,28 +104,122 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
     setImagePreview(null);
   };
 
+  function formatHHMM(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone,
+    }).formatToParts(date);
+    const hh = parts.find((p) => p.type === "hour")?.value || "00";
+    const mm = parts.find((p) => p.type === "minute")?.value || "00";
+    return `${hh}:${mm}`;
+  }
+
+  function minutesSinceMidnight(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone,
+    }).formatToParts(date);
+    const hh = Number(parts.find((p) => p.type === "hour")?.value || 0);
+    const mm = Number(parts.find((p) => p.type === "minute")?.value || 0);
+    return hh * 60 + mm;
+  }
+
+  function applyFilter(raw, cfg) {
+    const timeZone = cfg.tz || "UTC";
+    const sorted = [...raw].sort((a, b) => a.t - b.t);
+
+    // Prefer precise millisecond window in UTC
+    if (timeZone === "UTC") {
+      const startMs = Date.parse(
+        `${cfg.fromDate}T${cfg.fromTime || "00:00"}:00Z`
+      );
+      const endMs = Date.parse(`${cfg.toDate}T${cfg.toTime || "23:59"}:00Z`);
+      const filteredUtc = sorted.filter((b) => b.t >= startMs && b.t < endMs);
+      return filteredUtc.map(({ o, c, h, l, t }) => ({
+        o,
+        c,
+        h,
+        l,
+        t,
+        hhmm: formatHHMM(new Date(t), timeZone),
+      }));
+    }
+
+    // Fallback: timezone-aware by minutes-of-day
+    const [fh, fm] = String(cfg.fromTime || "00:00")
+      .split(":")
+      .map((x) => Number(x));
+    const [th, tm] = String(cfg.toTime || "23:59")
+      .split(":")
+      .map((x) => Number(x));
+    const startMin = fh * 60 + fm;
+    const endMin = th * 60 + tm;
+    const wrap = endMin < startMin;
+
+    const filtered = sorted.filter((b) => {
+      const min = minutesSinceMidnight(new Date(b.t), timeZone);
+      if (!wrap) return min >= startMin && min < endMin;
+      return min >= startMin || min < endMin; // wrap around midnight
+    });
+
+    return filtered.map(({ o, c, h, l, t }) => ({
+      o,
+      c,
+      h,
+      l,
+      t,
+      hhmm: formatHHMM(new Date(t), timeZone),
+    }));
+  }
+
   const handleFetchBars = async () => {
     try {
       setIsBarsLoading(true);
-      const results = await apiService.fetchPolygonBars(barsConfig);
-      const slim = Array.isArray(results)
-        ? results.map(({ o, c, h, l, t }) => ({ o, c, h, l, t }))
+      const raw = await apiService.fetchPolygonBars(barsConfig);
+      setRawBars(raw);
+      const tz = barsConfig.tz || "UTC";
+      const decorated = Array.isArray(raw)
+        ? raw.map((b) => ({ ...b, hhmm: formatHHMM(new Date(b.t), tz) }))
         : [];
-      setBarsSlim(slim);
-      const block = `\n\n--- POLYGON_BARS (${barsConfig.timespan}, mul=${
-        barsConfig.multiplier
-      }, n=${slim.length}) ---\n${JSON.stringify(
-        slim
-      )}\n--- END POLYGON_BARS ---`;
-      setBarsBlock(block);
-      setPreviewText(JSON.stringify(slim, null, 2));
+      setRawPreviewText(JSON.stringify(decorated, null, 2));
+      setBarsSlim([]);
+      setBarsBlock("");
+      setPreviewText("");
     } catch (err) {
       console.error("Failed to fetch bars:", err);
+      setRawBars([]);
+      setRawPreviewText("");
       setBarsSlim([]);
       setBarsBlock("");
       setPreviewText("");
     } finally {
       setIsBarsLoading(false);
+    }
+  };
+
+  const handleApplyFilter = () => {
+    try {
+      const filtered = applyFilter(rawBars, barsConfig);
+      setBarsSlim(filtered.map(({ o, c, h, l, t }) => ({ o, c, h, l, t })));
+      setPreviewText(JSON.stringify(filtered, null, 2));
+
+      const meta = `${barsConfig.ticker} ${barsConfig.timespan} mul=${barsConfig.multiplier} tz=${barsConfig.tz}`;
+      const range = `window=${barsConfig.fromTime}-${barsConfig.toTime}`;
+      const block = `\n\n--- POLYGON_BARS (${meta}, ${range}, n=${
+        filtered.length
+      }) ---\n${JSON.stringify(
+        filtered.map(({ o, c, h, l, t }) => ({ o, c, h, l, t }))
+      )}\n--- END POLYGON_BARS ---`;
+      setBarsBlock(block);
+    } catch (e) {
+      console.error("Filter failed:", e);
+      setBarsSlim([]);
+      setBarsBlock("");
+      setPreviewText("");
     }
   };
 
@@ -253,7 +357,16 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                 </button>
               </div>
 
-              <div className="bars-row">
+              {/* Top horizontal controls */}
+              <div className="bars-controls-top">
+                <label>Ticker</label>
+                <input
+                  type="text"
+                  value={barsConfig.ticker}
+                  onChange={(e) =>
+                    setBarsConfig((c) => ({ ...c, ticker: e.target.value }))
+                  }
+                />
                 <label>From</label>
                 <input
                   type="date"
@@ -277,8 +390,8 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                     setBarsConfig((c) => ({ ...c, timespan: e.target.value }))
                   }
                 >
-                  <option value="minute">minute</option>
                   <option value="second">second</option>
+                  <option value="minute">minute</option>
                   <option value="day">day</option>
                 </select>
                 <label>Multiplier</label>
@@ -306,9 +419,33 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                     }))
                   }
                 />
-              </div>
-
-              <div className="bars-row">
+                <label>From time</label>
+                <input
+                  type="time"
+                  value={barsConfig.fromTime}
+                  onChange={(e) =>
+                    setBarsConfig((c) => ({ ...c, fromTime: e.target.value }))
+                  }
+                />
+                <label>To time</label>
+                <input
+                  type="time"
+                  value={barsConfig.toTime}
+                  onChange={(e) =>
+                    setBarsConfig((c) => ({ ...c, toTime: e.target.value }))
+                  }
+                />
+                <label>Timezone</label>
+                <select
+                  value={barsConfig.tz}
+                  onChange={(e) =>
+                    setBarsConfig((c) => ({ ...c, tz: e.target.value }))
+                  }
+                >
+                  <option value="UTC">UTC</option>
+                  <option value="America/New_York">America/New_York</option>
+                  <option value="Europe/Oslo">Europe/Oslo</option>
+                </select>
                 <button
                   type="button"
                   className="bars-btn"
@@ -317,19 +454,38 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                 >
                   {isBarsLoading ? "Fetching..." : "Fetch"}
                 </button>
-                <span className="bars-status">
-                  {barsSlim.length > 0
-                    ? `Fetched ${barsSlim.length} bars`
-                    : "No data fetched yet"}
-                </span>
+                <button
+                  type="button"
+                  className="bars-btn"
+                  onClick={handleApplyFilter}
+                  disabled={rawBars.length === 0}
+                >
+                  Filter
+                </button>
               </div>
 
-              <div className="bars-preview-wrap">
-                <label>Preview of response</label>
-                <pre className="bars-preview">{previewText}</pre>
+              {/* Two text boxes: left raw, right filtered */}
+              <div className="bars-body">
+                <div className="bars-preview-wrap">
+                  <label>Fetched (raw)</label>
+                  <pre ref={rawPreviewRef} className="bars-preview">
+                    {rawPreviewText}
+                  </pre>
+                </div>
+                <div className="bars-preview-wrap">
+                  <label>Filtered</label>
+                  <pre ref={previewRef} className="bars-preview">
+                    {previewText}
+                  </pre>
+                </div>
               </div>
 
               <div className="bars-modal-footer">
+                <span className="bars-status">
+                  {barsSlim.length > 0
+                    ? `Filtered ${barsSlim.length} bars ready`
+                    : "No filtered data yet"}
+                </span>
                 <button
                   type="button"
                   className="bars-btn"

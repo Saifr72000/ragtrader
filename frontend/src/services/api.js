@@ -1,4 +1,8 @@
-const API_BASE_URL = import.meta.env.VITE_PUBLIC_BACKEND_URL;
+const API_BASE_URL =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? import.meta.env.VITE_LOCAL_BACKEND_URL || "http://localhost:3000/api"
+    : import.meta.env.VITE_PUBLIC_BACKEND_URL || "http://localhost:3000/api";
 
 export const apiService = {
   // Send a message to the chat API
@@ -53,20 +57,31 @@ export const apiService = {
   },
 
   // Fetch Polygon candlestick bars and return only the results array (GET with query params)
-  async fetchPolygonBars({ fromDate, toDate, timespan, multiplier, limit }) {
+  async fetchPolygonBars({
+    fromDate,
+    toDate,
+    timespan,
+    multiplier,
+    limit,
+    ticker = "X:BTCUSD",
+    max = 5000,
+  }) {
     const params = new URLSearchParams({
+      ticker,
       fromDate,
       toDate,
       timespan,
-      multiplier: parseInt(multiplier),
-      limit: parseInt(limit),
+      multiplier: String(parseInt(multiplier)),
+      limit: String(parseInt(limit)),
+      max: String(parseInt(max)),
     });
     const resp = await fetch(`${API_BASE_URL}/polygon?${params}`);
     if (!resp.ok) {
       throw new Error(`Polygon fetch failed: ${resp.status}`);
     }
     const data = await resp.json();
-    return Array.isArray(data?.results) ? data.results : [];
+    const arr = Array.isArray(data?.results) ? data.results : [];
+    return arr;
   },
 
   // Get chat history
