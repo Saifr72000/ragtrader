@@ -15,13 +15,13 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [isBarsLoading, setIsBarsLoading] = useState(false);
   const [barsConfig, setBarsConfig] = useState({
     ticker: "X:BTCUSD",
-    fromDate: "2025-08-08",
-    toDate: "2025-08-08",
+    fromDate: "2025-08-14",
+    toDate: "2025-08148",
     timespan: "minute",
     multiplier: 1,
-    limit: 5000,
+    limit: 1440,
     fromTime: "00:00",
-    toTime: "23:59",
+    toTime: "00:30",
     tz: "UTC",
     mode: "window", // retained but we use only window now
     lastN: 60,
