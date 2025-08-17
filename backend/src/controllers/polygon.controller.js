@@ -10,7 +10,7 @@ export const fetchPolygonData = async (req, res) => {
   const multiplier = parseInt(req.query.multiplier) || 1;
   const limit = parseInt(req.query.limit) || 120;
   const max = parseInt(req.query.max) || 5000; // safety cap when paging
-  const ticker = "X:BTCUSD";
+  const ticker = "X:ETHUSD";
 
   if (!apiKey) {
     return res.status(500).json({ error: "Polygon API key not configured" });

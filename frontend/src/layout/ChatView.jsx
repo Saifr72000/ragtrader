@@ -14,7 +14,7 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [isBarsPopupOpen, setIsBarsPopupOpen] = useState(false);
   const [isBarsLoading, setIsBarsLoading] = useState(false);
   const [barsConfig, setBarsConfig] = useState({
-    ticker: "X:BTCUSD",
+    ticker: "X:ETHUSD",
     fromDate: "2025-08-14",
     toDate: "2025-08148",
     timespan: "minute",
