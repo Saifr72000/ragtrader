@@ -4,6 +4,7 @@
   flex-direction: column;
   background-color: #ffffff;
   height: 100vh;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -17,6 +18,11 @@
   font-size: 20px;
   font-weight: 600;
   color: #1a1a1a;
+}
+
+/* WebSocket Dashboard spacing in ChatView */
+.chat-view .websocket-dashboard {
+  margin: 16px 30px 0 30px;
 }
 
 .messages-container {

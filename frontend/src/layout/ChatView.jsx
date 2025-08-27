@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import "./ChatView.css";
 import { apiService } from "../services/api";
+import WebSocketDashboard from "../components/WebSocketDashboard";
 
 const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [inputMessage, setInputMessage] = useState("");
@@ -238,6 +239,9 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
       <div className="chat-header">
         <h2>{`${activeChat?.title} ${activeChat?.id}` || "New Chat"}</h2>
       </div>
+
+      {/* WebSocket Dashboard */}
+      <WebSocketDashboard />
 
       <div className="messages-container">
         {messages.length === 0 ? (
