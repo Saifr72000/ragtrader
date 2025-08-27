@@ -6,7 +6,10 @@ import {
   getLastMessage,
   close,
   createOrder,
+  getOrders,
 } from "../services/coinbase.service.js";
+import { generateJWT } from "../utils/coinbase.utils.js";
+import axios from "axios";
 
 /** GET /api/coinbase/ws/connect */
 export function connect(req, res) {
@@ -84,6 +87,68 @@ export async function createOrderController(req, res) {
     res.json(result);
   } catch (error) {
     console.error("Order controller error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+}
+
+/** GET /api/coinbase/accounts - Get all accounts and balances */
+export async function getAccounts(req, res) {
+  try {
+    console.log("🏦 Fetching Coinbase accounts...");
+
+    // Generate JWT token for accounts endpoint
+    const token = generateJWT(
+      "api.coinbase.com",
+      "/api/v3/brokerage/accounts",
+      "GET"
+    );
+    console.log(
+      "🎫 Generated JWT token:",
+      token ? token.substring(0, 50) + "..." : "NO TOKEN"
+    );
+
+    const response = await axios.get(
+      "https://api.coinbase.com/api/v3/brokerage/accounts",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    console.log(
+      "✅ Accounts response:",
+      JSON.stringify(response.data, null, 2)
+    );
+    res.json({
+      success: true,
+      data: response.data,
+      message: "Accounts fetched successfully",
+    });
+  } catch (error) {
+    console.error("❌ Accounts error:", error.message);
+    if (error.response) {
+      console.error("💥 Coinbase accounts error details:", error.response.data);
+      console.error("💥 Status:", error.response.status);
+    }
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.response?.data || error.message,
+    });
+  }
+}
+
+export async function getOrdersController(req, res) {
+  try {
+    const result = await getOrders();
+    res.json(result);
+  } catch (error) {
+    console.error("Order retrieval error:", error);
     res.status(500).json({
       success: false,
       error: "Internal server error",

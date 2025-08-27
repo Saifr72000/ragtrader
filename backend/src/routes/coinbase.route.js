@@ -6,6 +6,8 @@ import {
   lastMessage,
   sseStream,
   createOrderController,
+  getAccounts,
+  getOrdersController,
 } from "../controllers/coinbase.controller.js";
 
 const router = express.Router();
@@ -20,7 +22,9 @@ router.get("/ws/stream", sseStream);
 
 // Order management
 router.post("/orders", createOrderController);
+router.get("/orders", getOrdersController);
 
 // Test API permissions
+router.get("/accounts", getAccounts);
 
 export default router;

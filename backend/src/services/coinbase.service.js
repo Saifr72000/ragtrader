@@ -31,9 +31,54 @@ export async function createOrder(payload) {
     });
     console.log("This is the data:", data);
 
-    res.status(201).json(data);
+    if (data.success) {
+      console.log("✅ Order created successfully:", data.success_response);
+      return { success: true, data: data.success_response };
+    } else {
+      console.error("❌ Order creation failed:", data.error_response || data);
+      return { success: false, error: data.error_response || data };
+    }
   } catch (error) {
     console.error("💥 Order creation error:", error.message);
+    if (error.response) {
+      console.error("💥 Coinbase error details:", error.response.data);
+      console.error("💥 Status:", error.response.status);
+    }
+    return { success: false, error: error.response?.data || error.message };
+  }
+}
+
+export async function getOrders() {
+  try {
+    const token = generateJWT(
+      "api.coinbase.com",
+      "/api/v3/brokerage/orders/historical/fills",
+      "GET"
+    );
+    if (!token) {
+      throw new Error("Failed to generate JWT token");
+    }
+
+    const url =
+      "https://api.coinbase.com/api/v3/brokerage/orders/historical/fills?product_ids=BTC-EUR&&limit=50";
+    const { data } = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 10000,
+    });
+    console.log("This is the data:", data);
+
+    if (data.success) {
+      console.log("✅ Orders retrieved successfully:", data.success_response);
+      return { success: true, data: data.success_response };
+    } else {
+      console.error("❌ Order retrieval failed:", data.error_response || data);
+      return { success: false, error: data.error_response || data };
+    }
+  } catch (error) {
+    console.error("💥 Order retrieval error:", error.message);
     if (error.response) {
       console.error("💥 Coinbase error details:", error.response.data);
       console.error("💥 Status:", error.response.status);

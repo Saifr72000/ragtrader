@@ -97,6 +97,28 @@
   padding: 16px;
   background: #fff;
   animation: slideDown 0.3s ease;
+  max-height: 600px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar for main content */
+.ws-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ws-content::-webkit-scrollbar-track {
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.ws-content::-webkit-scrollbar-thumb {
+  background: #dee2e6;
+  border-radius: 4px;
+}
+
+.ws-content::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
 }
 
 @keyframes slideDown {
@@ -460,10 +482,31 @@
   font-size: 12px;
   line-height: 1.4;
   overflow-x: auto;
-  max-height: 400px;
-  overflow-y: auto;
+  max-height: 300px;
+  overflow-y: scroll;
   white-space: pre-wrap;
   word-break: break-all;
+  border: 1px solid #e1e5e9;
+  border-radius: 4px;
+}
+
+/* Custom scrollbar styling for raw data */
+.raw-data-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.raw-data-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.raw-data-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.raw-data-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 /* Responsive */
