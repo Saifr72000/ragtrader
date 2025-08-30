@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./WebSocketDashboard.css";
+import { apiService } from "../services/api";
 
-const WebSocketDashboard = () => {
+const WebSocketDashboard = React.memo((props) => {
   const [isConnected, setIsConnected] = useState(false);
   const [subscribedTickers, setSubscribedTickers] = useState(new Set());
   const [subscribedCandles, setSubscribedCandles] = useState(new Set());
@@ -12,8 +13,12 @@ const WebSocketDashboard = () => {
   const [dataMode, setDataMode] = useState("ticker"); // 'ticker' or 'candles'
   const [showRawData, setShowRawData] = useState(false); // Toggle for raw JSON view
   const [lastRawMessage, setLastRawMessage] = useState(null); // Store raw message
+  const [lastTickerMessage, setLastTickerMessage] = useState(null); // Store last ticker message
+  const [lastCandlesMessage, setLastCandlesMessage] = useState(null); // Store last candles message
   const [isStreaming, setIsStreaming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isToggling, setIsToggling] = useState(false); // Prevent rapid toggling
+  const [isSendingCandles, setIsSendingCandles] = useState(false); // Track sending state
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [error, setError] = useState(null);
   const eventSourceRef = useRef(null);
@@ -142,15 +147,36 @@ const WebSocketDashboard = () => {
       try {
         const data = JSON.parse(event.data);
 
-        // Store raw message for debugging (exclude heartbeats and filter by mode)
-        if (data.channel !== "heartbeats") {
-          // Only show data that matches current mode
-          if (
-            (dataMode === "ticker" && data.channel === "ticker") ||
-            (dataMode === "candles" && data.channel === "candles")
-          ) {
-            setLastRawMessage(data);
+        // Handle candle completion events for automatic RAG analysis
+        if (data.type === "candle_completed") {
+          console.log("🎯 CANDLE COMPLETION EVENT RECEIVED:", data);
+          console.log(
+            "📊 Automatically sending to active chat for RAG analysis..."
+          );
+
+          // Use the parent's onSendMessage function to send to active chat
+          if (props.onSendMessage && props.activeChatId) {
+            props.onSendMessage(data.message);
+            console.log(
+              "✅ Completed candle analysis sent to active chat automatically"
+            );
+          } else {
+            console.warn(
+              "⚠️ Cannot auto-send: No active chat or send function available"
+            );
+            console.log("💡 Please ensure you have an active chat selected");
           }
+
+          return; // Don't process as regular WebSocket data
+        }
+
+        // Store raw messages separately for ticker and candles
+        if (data.channel === "ticker") {
+          setLastTickerMessage(data);
+          setLastRawMessage(data); // Also update the general one for backward compatibility
+        } else if (data.channel === "candles") {
+          setLastCandlesMessage(data);
+          setLastRawMessage(data); // Also update the general one for backward compatibility
         }
 
         // Handle ticker data
@@ -341,6 +367,128 @@ const WebSocketDashboard = () => {
     }
   };
 
+  // Subscribe to both ticker and candles for optimal trading
+  const handleSubscribeBoth = async () => {
+    if (!isConnected) return;
+
+    try {
+      setError(null);
+
+      // Subscribe to ticker for real-time triggers
+      const tickerResponse = await fetch(
+        `${API_BASE_URL}/coinbase/ws/subscribe`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            channel: "ticker",
+            product_ids: [activeTicker],
+          }),
+        }
+      );
+
+      const tickerData = await tickerResponse.json();
+
+      // Subscribe to candles for RAG analysis
+      const candlesResponse = await fetch(
+        `${API_BASE_URL}/coinbase/ws/subscribe`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            channel: "candles",
+            product_ids: [activeTicker],
+          }),
+        }
+      );
+
+      const candlesData = await candlesResponse.json();
+
+      if (tickerData.ok && candlesData.ok) {
+        setSubscribedTickers((prev) => new Set([...prev, activeTicker]));
+        setSubscribedCandles((prev) => new Set([...prev, activeTicker]));
+
+        if (!isStreaming) {
+          startStreaming();
+        }
+
+        console.log(
+          "✅ Subscribed to both ticker and candles for optimal trading!"
+        );
+
+        // Automatically send initial candles data to RAG after a short delay
+        // to allow the initial snapshot to be received
+        setTimeout(async () => {
+          try {
+            await sendCandlesToChat();
+            console.log("🤖 Initial candles data sent to RAG for analysis");
+          } catch (error) {
+            console.error("Failed to send initial candles to RAG:", error);
+          }
+        }, 1000); // 1 second delay since we now send any available data
+      } else {
+        setError(
+          `Failed to subscribe: Ticker ${
+            tickerData.ok ? "OK" : "Failed"
+          }, Candles ${candlesData.ok ? "OK" : "Failed"}`
+        );
+      }
+    } catch (err) {
+      setError(`Dual subscribe error: ${err.message}`);
+    }
+  };
+
+  // Unsubscribe from both channels
+  const handleUnsubscribeBoth = async () => {
+    try {
+      setError(null);
+
+      // Unsubscribe from ticker
+      await fetch(`${API_BASE_URL}/coinbase/ws/unsubscribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channel: "ticker",
+          product_ids: [activeTicker],
+        }),
+      });
+
+      // Unsubscribe from candles
+      await fetch(`${API_BASE_URL}/coinbase/ws/unsubscribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channel: "candles",
+          product_ids: [activeTicker],
+        }),
+      });
+
+      setSubscribedTickers((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(activeTicker);
+        return newSet;
+      });
+
+      setSubscribedCandles((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(activeTicker);
+        return newSet;
+      });
+
+      console.log("✅ Unsubscribed from both ticker and candles");
+    } catch (err) {
+      setError(`Dual unsubscribe error: ${err.message}`);
+    }
+  };
+
   const fetchLastMessage = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/coinbase/ws/last`);
@@ -378,6 +526,127 @@ const WebSocketDashboard = () => {
     }
   };
 
+  // Safe toggle function to prevent interrupting message flow
+  const handleToggleExpanded = () => {
+    if (isToggling) return; // Prevent rapid toggling
+
+    setIsToggling(true);
+    setIsExpanded(!isExpanded);
+
+    // Reset toggle lock after a short delay
+    setTimeout(() => {
+      setIsToggling(false);
+    }, 300);
+  };
+
+  // Send candle data to chat
+  const sendCandlesToChat = async () => {
+    if (isSendingCandles) {
+      console.log("⚠️ Already sending candles, ignoring duplicate request");
+      return;
+    }
+
+    try {
+      setIsSendingCandles(true);
+      setError(null); // Clear any previous errors
+
+      // Check if we have an active chat ID
+      if (!props.activeChatId) {
+        setError(
+          "No active chat selected. Please select or create a chat first."
+        );
+        console.error("Cannot send candles: No active chat ID");
+        return;
+      }
+
+      console.log("🔍 Fetching candle data from backend...");
+
+      // Fetch candle data from the backend
+      const response = await apiService.getCandlesData();
+
+      console.log("📦 Backend response:", response);
+
+      if (response.success && response.data) {
+        const rawMessages = response.data.raw_messages;
+        const meta = `BTC-USD 5min candles (raw WebSocket data from Coinbase) - ${response.data.metadata.total_messages} messages`;
+
+        // Format the raw WebSocket data for RAG analysis
+        const candleBlock = `Raw WebSocket candle data from Coinbase for analysis:
+
+--- COINBASE_RAW_WEBSOCKET_DATA (${meta}) ---
+${JSON.stringify(rawMessages, null, 2)}
+--- END COINBASE_RAW_WEBSOCKET_DATA ---
+
+Buffer Status: ${
+          response.data.ready
+            ? "Ready (full buffer)"
+            : "Collecting (partial data)"
+        }
+Total Messages: ${response.data.metadata.total_messages}
+Completed Candles: ${response.data.metadata.completed_candles}
+${
+  response.data.metadata.has_live_candle
+    ? "Includes current live candle (incomplete)"
+    : "Only completed candles"
+}
+
+This is raw WebSocket data exactly as received from Coinbase Advanced Trade API. Please analyze these candlestick patterns and provide trading insights. Look for support/resistance levels, trend patterns, and potential entry/exit signals.`;
+
+        // Use the parent's onSendMessage function for immediate UI updates and hourglass
+        if (props.onSendMessage) {
+          console.log(
+            "🎯 Using parent's message flow for immediate UI update and hourglass"
+          );
+          console.log("📤 Sending candle data to chat:", {
+            chatId: props.activeChatId,
+            messageLength: candleBlock.length,
+            totalMessages: response.data.metadata.total_messages,
+          });
+
+          await props.onSendMessage(candleBlock); // This triggers the hourglass and proper UI flow
+
+          console.log(
+            "✅ Candle data sent successfully via parent message flow"
+          );
+        } else if (props.onSendCandleData) {
+          console.log(
+            "🎯 Using parent component's data flow for immediate UI update"
+          );
+          props.onSendCandleData(candleBlock);
+        } else {
+          // Fallback: Send directly to API if parent function not available
+          console.log("🤖 Sending candles data directly to chat API...");
+          await apiService.sendMessage(candleBlock, props.activeChatId);
+          console.log("✅ Candles data sent successfully to chat!");
+        }
+      } else {
+        // Provide more specific error information
+        const errorMsg =
+          response.message || "Candle buffer not ready or no data available";
+        const statusInfo = response.progress
+          ? ` (Progress: ${response.progress}%)`
+          : "";
+        setError(`${errorMsg}${statusInfo}`);
+        console.error("Candle data not ready:", response);
+
+        // If it's just a timing issue, suggest waiting
+        if (errorMsg.includes("Buffer not ready")) {
+          console.log(
+            "💡 Suggestion: The candle buffer is still collecting data. Try again in a few minutes or wait for more 5-minute candles to complete."
+          );
+        }
+      }
+    } catch (err) {
+      setError(`Failed to send candle data: ${err.message}`);
+      console.error("Error sending candles to chat:", err);
+    } finally {
+      // Reset sending state after a delay to prevent rapid re-sends
+      setTimeout(() => {
+        setIsSendingCandles(false);
+      }, 2000);
+    }
+  };
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -403,7 +672,7 @@ const WebSocketDashboard = () => {
       className={`websocket-dashboard ${isExpanded ? "expanded" : "collapsed"}`}
     >
       {/* Header with toggle */}
-      <div className="ws-header" onClick={() => setIsExpanded(!isExpanded)}>
+      <div className="ws-header" onClick={handleToggleExpanded}>
         <div className="ws-title">
           <span className="ws-icon">📡</span>
           <span>Live Market Data</span>
@@ -521,6 +790,28 @@ const WebSocketDashboard = () => {
             </button>
 
             <button
+              onClick={handleSubscribeBoth}
+              disabled={
+                !isConnected ||
+                (subscribedTickers.has(activeTicker) &&
+                  subscribedCandles.has(activeTicker))
+              }
+              className="ws-btn trading-optimal"
+            >
+              🚀 Subscribe for Trading (Ticker + Candles)
+            </button>
+
+            {subscribedTickers.has(activeTicker) &&
+              subscribedCandles.has(activeTicker) && (
+                <button
+                  onClick={handleUnsubscribeBoth}
+                  className="ws-btn unsubscribe"
+                >
+                  Unsubscribe Both
+                </button>
+              )}
+
+            <button
               onClick={fetchLastMessage}
               disabled={!isConnected}
               className="ws-btn fetch"
@@ -534,6 +825,19 @@ const WebSocketDashboard = () => {
             >
               {showRawData ? "Hide" : "Show"} Raw Data
             </button>
+
+            {subscribedCandles.has(activeTicker) && (
+              <button
+                onClick={sendCandlesToChat}
+                disabled={!props.activeChatId || isSendingCandles}
+                className="ws-btn trading-chat"
+                style={{
+                  backgroundColor: isSendingCandles ? "#6b7280" : "#10b981",
+                }}
+              >
+                {isSendingCandles ? "⏳ Sending..." : "💬 Send to Chat"}
+              </button>
+            )}
           </div>
 
           {/* Error display */}
@@ -651,28 +955,63 @@ const WebSocketDashboard = () => {
             </div>
           )}
 
-          {/* Raw Data Display */}
-          {showRawData && lastRawMessage && (
-            <div className="ws-raw-data">
+          {/* Raw data display - Split into two containers */}
+          {showRawData && (
+            <div className="raw-data-display">
               <div className="raw-data-header">
-                <h4>
-                  📄 Raw WebSocket Data ({lastRawMessage.channel || "unknown"})
-                </h4>
-                <span className="raw-data-time">
-                  {lastRawMessage.timestamp
-                    ? formatTime(lastRawMessage.timestamp)
-                    : "No timestamp"}
-                </span>
+                <h4>📡 Raw WebSocket Data</h4>
+                <small>Live data streams from Coinbase WebSocket API</small>
               </div>
-              <pre className="raw-data-content">
-                {JSON.stringify(lastRawMessage, null, 2)}
-              </pre>
+
+              <div className="raw-data-containers">
+                {/* Left container - Candles data */}
+                <div className="raw-data-container candles-container">
+                  <div className="raw-data-container-header">
+                    <h5>🕯️ Candles Channel (OHLCV)</h5>
+                    <span className="update-frequency">
+                      Updates: ~8 seconds
+                    </span>
+                  </div>
+                  <div className="raw-data-content">
+                    {lastCandlesMessage ? (
+                      <pre>{JSON.stringify(lastCandlesMessage, null, 2)}</pre>
+                    ) : (
+                      <div className="no-data">
+                        <p>No candles data received yet.</p>
+                        <small>
+                          Subscribe to candles channel to see OHLCV data
+                        </small>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right container - Ticker data */}
+                <div className="raw-data-container ticker-container">
+                  <div className="raw-data-container-header">
+                    <h5>📊 Ticker Channel (Real-time)</h5>
+                    <span className="update-frequency">Updates: ~1 second</span>
+                  </div>
+                  <div className="raw-data-content">
+                    {lastTickerMessage ? (
+                      <pre>{JSON.stringify(lastTickerMessage, null, 2)}</pre>
+                    ) : (
+                      <div className="no-data">
+                        <p>No ticker data received yet.</p>
+                        <small>
+                          Subscribe to ticker channel to see live prices
+                        </small>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
       )}
     </div>
   );
-};
+});
 
 export default WebSocketDashboard;

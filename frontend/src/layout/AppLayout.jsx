@@ -171,7 +171,7 @@ const AppLayout = () => {
       const assistantPlaceholder = {
         _id: assistantPlaceholderId,
         role: "assistant",
-        content: [{ text: "" }],
+        content: [{ text: "Analyzing market data..." }], // Better pending text
         timestamp: new Date().toISOString(),
         isPending: true,
       };
@@ -183,12 +183,19 @@ const AppLayout = () => {
         assistantPlaceholder,
       ]);
 
+      console.log("🤖 Sending message to backend...", {
+        chatId: activeChatId,
+        messageLength: message.length,
+      });
+
       // Send message to backend
       const response = await apiService.sendMessage(
         message,
         activeChatId,
         imageFile
       );
+
+      console.log("✅ Message sent successfully, reloading chat messages...");
 
       // Store retrieved chunks for the right sidebar
       if (response.retrievedChunks) {
@@ -197,19 +204,100 @@ const AppLayout = () => {
       }
 
       // Reload messages to replace the placeholder with the real assistant reply
-      const chatMessages = await apiService.getChatMessages(activeChatId);
-      if (chatMessages && chatMessages.length > 0) {
-        setMessages(chatMessages);
-      }
+      // Add a longer delay to ensure backend has processed the RAG response
+      let retryCount = 0;
+      const maxRetries = 5; // Maximum number of retries
+
+      const reloadMessages = async () => {
+        try {
+          retryCount++;
+          console.log(
+            `📥 Attempting to reload messages (attempt ${retryCount}/${maxRetries})`
+          );
+
+          const chatMessages = await apiService.getChatMessages(activeChatId);
+          if (chatMessages && chatMessages.length > 0) {
+            console.log("📥 Reloaded chat messages:", chatMessages.length);
+
+            // Check if we have a new assistant message (not pending)
+            const hasNewAssistantMessage = chatMessages.some(
+              (msg) =>
+                msg.role === "assistant" &&
+                !msg.isPending &&
+                msg.timestamp > userMessage.timestamp // Ensure it's newer than our sent message
+            );
+
+            if (hasNewAssistantMessage) {
+              console.log("✅ Found new assistant response, updating messages");
+              setMessages(chatMessages);
+            } else if (retryCount < maxRetries) {
+              console.log(
+                "⏳ No new assistant response yet, retrying in 3 seconds..."
+              );
+              // Keep trying for a bit longer
+              setTimeout(reloadMessages, 3000);
+            } else {
+              console.log("⚠️ Maximum retries reached, keeping pending state");
+              // After max retries, update the pending message to show the issue
+              setMessages((prevMessages) =>
+                prevMessages.map((msg) =>
+                  msg._id === assistantPlaceholderId
+                    ? {
+                        ...msg,
+                        content: [
+                          {
+                            text: "⚠️ RAG analysis failed. Please check your OpenAI API quota and try again.",
+                          },
+                        ],
+                        isPending: false,
+                      }
+                    : msg
+                )
+              );
+            }
+          }
+        } catch (reloadError) {
+          console.error("Error reloading messages:", reloadError);
+          if (retryCount < maxRetries) {
+            // Keep the pending message if reload fails and try again
+            setTimeout(reloadMessages, 5000);
+          }
+        }
+      };
+
+      // Start the reload process after a short delay
+      setTimeout(reloadMessages, 2000); // Increased initial delay
     } catch (error) {
       console.error("Error sending message:", error);
 
-      // Remove any pending placeholders if there was an error
+      // Check if it's an API quota/rate limit error
+      const isAPIError =
+        error.message &&
+        (error.message.includes("quota") ||
+          error.message.includes("rate limit") ||
+          error.message.includes("429"));
+
+      // Update the assistant placeholder with error info
       setMessages((prevMessages) =>
-        prevMessages.filter((msg) => !msg.isPending)
+        prevMessages.map((msg) =>
+          msg._id === assistantPlaceholderId
+            ? {
+                ...msg,
+                content: [
+                  {
+                    text: isAPIError
+                      ? "⚠️ OpenAI API quota exceeded. Please check your billing and try again."
+                      : `❌ Error sending message: ${error.message}`,
+                  },
+                ],
+                isPending: false,
+              }
+            : msg
+        )
       );
 
-      // You could show an error message to the user here
+      // Don't start the reload process if we have an immediate error
+      return;
     }
   };
 

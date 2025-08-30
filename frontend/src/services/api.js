@@ -161,6 +161,42 @@ export const apiService = {
       throw error;
     }
   },
+
+  // Delete a chat
+  async deleteChat(chatId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/${chatId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      throw error;
+    }
+  },
+
+  // Get candles data for RAG analysis
+  async getCandlesData() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/coinbase/candles/raw`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error fetching candles data:", error);
+      throw error;
+    }
+  },
 };
 
 // Example usage in your components:

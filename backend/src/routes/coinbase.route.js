@@ -5,8 +5,16 @@ import {
   unsubscribeRoute,
   lastMessage,
   sseStream,
-  createOrderController,
+  getCandleBufferStatus,
+  getCandleDataForRAG,
+  getAvailableCandleData,
+  getRawCandleDataForRAG,
+  startTradingEngine,
+  stopTradingEngine,
+  getTradingEngineStatus,
+  getRecentTrades,
   getAccounts,
+  createOrderController,
   getOrdersController,
 } from "../controllers/coinbase.controller.js";
 
@@ -26,5 +34,17 @@ router.get("/orders", getOrdersController);
 
 // Test API permissions
 router.get("/accounts", getAccounts);
+
+// Candle buffer endpoints
+router.get("/candles/status", getCandleBufferStatus);
+router.get("/candles/data", getCandleDataForRAG);
+router.get("/candles/available", getAvailableCandleData);
+router.get("/candles/raw", getRawCandleDataForRAG);
+
+// Trading engine endpoints
+router.post("/trading/start", startTradingEngine);
+router.post("/trading/stop", stopTradingEngine);
+router.get("/trading/status", getTradingEngineStatus);
+router.get("/trading/trades", getRecentTrades);
 
 export default router;

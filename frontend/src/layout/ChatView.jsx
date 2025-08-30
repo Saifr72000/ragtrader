@@ -234,6 +234,11 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
     setIsBarsPopupOpen(false);
   };
 
+  // Handle candle data from WebSocketDashboard
+  const handleSendCandleData = (candleBlock) => {
+    setInputMessage((prev) => `${prev}${candleBlock}`);
+  };
+
   return (
     <div className="chat-view">
       <div className="chat-header">
@@ -241,7 +246,11 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
       </div>
 
       {/* WebSocket Dashboard */}
-      <WebSocketDashboard />
+      <WebSocketDashboard
+        onSendCandleData={handleSendCandleData}
+        onSendMessage={onSendMessage}
+        activeChatId={activeChat?.id}
+      />
 
       <div className="messages-container">
         {messages.length === 0 ? (

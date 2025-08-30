@@ -9,6 +9,21 @@ import {
   getOrders,
 } from "../services/coinbase.service.js";
 import { generateJWT } from "../utils/coinbase.utils.js";
+import {
+  getForRAGAnalysis,
+  getStatus,
+  reset,
+  getCurrentLiveCandle,
+  getAllCompletedCandles,
+  getAvailableCandles,
+  getRawCandleData,
+} from "../services/candleBuffer.service.js";
+import {
+  start,
+  stop,
+  getTradingStatus,
+  getRecentTrades as getTradingRecentTrades,
+} from "../services/tradingEngine.service.js";
 import axios from "axios";
 
 /** GET /api/coinbase/ws/connect */
@@ -152,6 +167,192 @@ export async function getOrdersController(req, res) {
     res.status(500).json({
       success: false,
       error: "Internal server error",
+    });
+  }
+}
+
+/** GET /api/coinbase/candles/status - Get candle buffer status */
+export async function getCandleBufferStatus(req, res) {
+  try {
+    const status = getStatus();
+    const stats = null; // Removed getPriceStats - can be calculated from candles if needed
+
+    res.json({
+      success: true,
+      buffer: status,
+      priceStats: stats,
+      message: status.isReady
+        ? "Buffer ready for RAG analysis"
+        : `Collecting candles: ${status.count}/${status.maxSize}`,
+    });
+  } catch (error) {
+    console.error("❌ Candle buffer status error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get candle buffer status",
+    });
+  }
+}
+
+/** GET /api/coinbase/candles/data - Get candles for RAG analysis */
+export async function getCandleDataForRAG(req, res) {
+  try {
+    const ragData = getForRAGAnalysis();
+
+    if (!ragData.success) {
+      return res.status(400).json({
+        success: false,
+        message: ragData.message,
+        progress: getStatus().progress,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: ragData.data,
+      message: "Completed candle data ready for RAG analysis",
+    });
+  } catch (error) {
+    console.error("💥 Error getting candle data for RAG:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get candle data",
+      error: error.message,
+    });
+  }
+}
+
+/** GET /api/coinbase/candles/available - Get any available candles (immediate) */
+export async function getAvailableCandleData(req, res) {
+  try {
+    const candleData = getAvailableCandles();
+
+    if (!candleData.success) {
+      return res.status(400).json(candleData);
+    }
+
+    res.json({
+      success: true,
+      data: candleData.data,
+      message: candleData.data.ready
+        ? "Buffer ready - returning completed candles"
+        : "Buffer collecting - returning available candles",
+    });
+  } catch (error) {
+    console.error("💥 Error getting available candle data:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get available candle data",
+      error: error.message,
+    });
+  }
+}
+
+/** GET /api/coinbase/candles/raw - Get raw WebSocket candle data (exactly as received) */
+export async function getRawCandleDataForRAG(req, res) {
+  try {
+    const rawData = getRawCandleData();
+
+    if (!rawData.success) {
+      return res.status(400).json(rawData);
+    }
+
+    res.json({
+      success: true,
+      data: rawData.data,
+      message: "Raw WebSocket candle data from Coinbase API",
+    });
+  } catch (error) {
+    console.error("💥 Error getting raw candle data:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get raw candle data",
+      error: error.message,
+    });
+  }
+}
+
+/** POST /api/coinbase/trading/start - Start automated trading engine */
+export async function startTradingEngine(req, res) {
+  try {
+    const result = await start();
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        status: getTradingStatus(),
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.message || result.error,
+      });
+    }
+  } catch (error) {
+    console.error("❌ Start trading engine error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to start trading engine",
+    });
+  }
+}
+
+/** POST /api/coinbase/trading/stop - Stop automated trading engine */
+export async function stopTradingEngine(req, res) {
+  try {
+    const result = stop();
+
+    res.json({
+      success: true,
+      message: result.message,
+      status: tradingEngine.getStatus(),
+    });
+  } catch (error) {
+    console.error("❌ Stop trading engine error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to stop trading engine",
+    });
+  }
+}
+
+/** GET /api/coinbase/trading/status - Get trading engine status */
+export async function getTradingEngineStatus(req, res) {
+  try {
+    const status = getTradingStatus();
+    const recentTrades = getTradingRecentTrades(5);
+
+    res.json({
+      success: true,
+      status: status,
+      recentTrades: recentTrades,
+    });
+  } catch (error) {
+    console.error("❌ Get trading status error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get trading status",
+    });
+  }
+}
+
+/** GET /api/coinbase/trading/trades - Get recent trades */
+export async function getRecentTrades(req, res) {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const trades = tradingEngine.getRecentTrades(limit);
+
+    res.json({
+      success: true,
+      trades: trades,
+      total: trades.length,
+    });
+  } catch (error) {
+    console.error("❌ Get recent trades error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get recent trades",
     });
   }
 }
