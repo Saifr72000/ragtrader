@@ -21,6 +21,11 @@ const WebSocketDashboard = React.memo((props) => {
   const [isSendingCandles, setIsSendingCandles] = useState(false); // Track sending state
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [error, setError] = useState(null);
+
+  // Trading states
+  const [activeTab, setActiveTab] = useState("trading");
+  const [activeSignal, setActiveSignal] = useState(null);
+  const [autoTradingStatus, setAutoTradingStatus] = useState(null);
   const eventSourceRef = useRef(null);
 
   const availableTickers = ["BTC-USD", "ETH-USD"];
@@ -539,6 +544,23 @@ const WebSocketDashboard = React.memo((props) => {
     }, 300);
   };
 
+  // Fetch trading status
+  const fetchTradingStatus = async () => {
+    try {
+      console.log("🔍 Fetching trading status...");
+      const response = await fetch(`${API_BASE_URL}/auto-trading/status`);
+      const result = await response.json();
+      console.log("📊 Trading status:", result);
+
+      if (result.success && result.data) {
+        setAutoTradingStatus(result.data);
+        setActiveSignal(result.data.signal_status?.active_signal);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching trading status:", error);
+    }
+  };
+
   // Send candle data to chat
   const sendCandlesToChat = async () => {
     if (isSendingCandles) {
@@ -714,298 +736,531 @@ This is raw WebSocket data exactly as received from Coinbase Advanced Trade API.
             ))}
           </div>
 
-          {/* Data Mode Selector */}
+          {/* Tab Selector */}
           <div className="ws-mode-selector">
             <button
-              onClick={() => setDataMode("ticker")}
-              className={`ws-mode-btn ${dataMode === "ticker" ? "active" : ""}`}
-            >
-              📊 Ticker Data
-            </button>
-            <button
-              onClick={() => setDataMode("candles")}
+              onClick={() => setActiveTab("trading")}
               className={`ws-mode-btn ${
-                dataMode === "candles" ? "active" : ""
+                activeTab === "trading" ? "active" : ""
               }`}
             >
-              🕯️ Live Candles
+              📊 Trading Data
+            </button>
+            <button
+              onClick={() => setActiveTab("signals")}
+              className={`ws-mode-btn ${
+                activeTab === "signals" ? "active" : ""
+              }`}
+            >
+              🎯 Signal Data
             </button>
           </div>
 
-          {/* Control buttons */}
-          <div className="ws-controls">
-            <button
-              onClick={handleConnect}
-              disabled={isConnected || connectionStatus === "connecting"}
-              className="ws-btn connect"
-            >
-              {connectionStatus === "connecting" ? "Connecting..." : "Connect"}
-            </button>
-
-            {dataMode === "ticker" ? (
-              <>
+          {/* Tab Content */}
+          {activeTab === "trading" && (
+            <div className="tab-content trading-tab">
+              {/* Control buttons */}
+              <div className="ws-controls">
                 <button
-                  onClick={handleSubscribe}
-                  disabled={!isConnected || subscribedTickers.has(activeTicker)}
-                  className="ws-btn subscribe"
+                  onClick={handleConnect}
+                  disabled={isConnected || connectionStatus === "connecting"}
+                  className="ws-btn connect"
                 >
-                  Subscribe Ticker {activeTicker.split("-")[0]}
+                  {connectionStatus === "connecting"
+                    ? "Connecting..."
+                    : "Connect"}
                 </button>
-                <button
-                  onClick={handleUnsubscribe}
-                  disabled={!subscribedTickers.has(activeTicker)}
-                  className="ws-btn unsubscribe"
-                >
-                  Unsubscribe Ticker {activeTicker.split("-")[0]}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={handleSubscribeCandles}
-                  disabled={!isConnected || subscribedCandles.has(activeTicker)}
-                  className="ws-btn subscribe"
-                >
-                  Subscribe Candles {activeTicker.split("-")[0]}
-                </button>
-                <button
-                  onClick={handleUnsubscribeCandles}
-                  disabled={!subscribedCandles.has(activeTicker)}
-                  className="ws-btn unsubscribe"
-                >
-                  Unsubscribe Candles {activeTicker.split("-")[0]}
-                </button>
-              </>
-            )}
 
-            <button
-              onClick={handleSubscribeAll}
-              disabled={
-                !isConnected ||
-                subscribedTickers.size === availableTickers.length
-              }
-              className="ws-btn subscribe-all"
-            >
-              Subscribe All Tickers
-            </button>
-
-            <button
-              onClick={handleSubscribeBoth}
-              disabled={
-                !isConnected ||
-                (subscribedTickers.has(activeTicker) &&
-                  subscribedCandles.has(activeTicker))
-              }
-              className="ws-btn trading-optimal"
-            >
-              🚀 Subscribe for Trading (Ticker + Candles)
-            </button>
-
-            {subscribedTickers.has(activeTicker) &&
-              subscribedCandles.has(activeTicker) && (
-                <button
-                  onClick={handleUnsubscribeBoth}
-                  className="ws-btn unsubscribe"
-                >
-                  Unsubscribe Both
-                </button>
-              )}
-
-            <button
-              onClick={fetchLastMessage}
-              disabled={!isConnected}
-              className="ws-btn fetch"
-            >
-              Get Last
-            </button>
-
-            <button
-              onClick={() => setShowRawData(!showRawData)}
-              className="ws-btn debug"
-            >
-              {showRawData ? "Hide" : "Show"} Raw Data
-            </button>
-
-            {subscribedCandles.has(activeTicker) && (
-              <button
-                onClick={sendCandlesToChat}
-                disabled={!props.activeChatId || isSendingCandles}
-                className="ws-btn trading-chat"
-                style={{
-                  backgroundColor: isSendingCandles ? "#6b7280" : "#10b981",
-                }}
-              >
-                {isSendingCandles ? "⏳ Sending..." : "💬 Send to Chat"}
-              </button>
-            )}
-          </div>
-
-          {/* Error display */}
-          {error && <div className="ws-error">⚠️ {error}</div>}
-
-          {/* Streaming status */}
-          <div className="ws-streaming-status">
-            <span
-              className={`streaming-indicator ${isStreaming ? "active" : ""}`}
-            >
-              {isStreaming ? "🔴 Live" : "⚫ Offline"}
-            </span>
-            <span>WebSocket: {connectionStatus}</span>
-            <span>
-              Subscribed:{" "}
-              {subscribedTickers.size > 0
-                ? Array.from(subscribedTickers).join(", ")
-                : "None"}
-            </span>
-          </div>
-
-          {/* Data display */}
-          {currentData && (
-            <div className="ws-ticker-data">
-              <div className="ticker-main">
-                <div className="ticker-price">
-                  <span className="currency">{activeTicker}</span>
-                  <span className="price">
-                    $
-                    {dataMode === "ticker"
-                      ? formatPrice(currentData.price)
-                      : formatPrice(currentData.close)}
-                  </span>
-                </div>
-                <div className="ticker-change">
-                  {dataMode === "ticker" ? (
-                    <span
-                      className={`change ${
-                        parseFloat(currentData.price) >
-                        parseFloat(currentData.open_24h)
-                          ? "positive"
-                          : "negative"
-                      }`}
-                    >
-                      {parseFloat(currentData.price) >
-                      parseFloat(currentData.open_24h)
-                        ? "↗"
-                        : "↘"}
-                    </span>
-                  ) : (
-                    <span
-                      className={`change ${
-                        currentData.close > currentData.open
-                          ? "positive"
-                          : "negative"
-                      }`}
-                    >
-                      {currentData.close > currentData.open ? "↗" : "↘"}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="ticker-details">
                 {dataMode === "ticker" ? (
                   <>
-                    <div className="ticker-row">
-                      <span>Volume (24h):</span>
-                      <span>
-                        {parseFloat(currentData.volume_24h).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>High (24h):</span>
-                      <span>${formatPrice(currentData.high_24h)}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>Low (24h):</span>
-                      <span>${formatPrice(currentData.low_24h)}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>Last updated:</span>
-                      <span>{formatTime(currentData.time)}</span>
-                    </div>
+                    <button
+                      onClick={handleSubscribe}
+                      disabled={
+                        !isConnected || subscribedTickers.has(activeTicker)
+                      }
+                      className="ws-btn subscribe"
+                    >
+                      Subscribe Ticker {activeTicker.split("-")[0]}
+                    </button>
+                    <button
+                      onClick={handleUnsubscribe}
+                      disabled={!subscribedTickers.has(activeTicker)}
+                      className="ws-btn unsubscribe"
+                    >
+                      Unsubscribe Ticker {activeTicker.split("-")[0]}
+                    </button>
                   </>
                 ) : (
                   <>
-                    <div className="ticker-row">
-                      <span>Open:</span>
-                      <span>${formatPrice(currentData.open)}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>High:</span>
-                      <span>${formatPrice(currentData.high)}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>Low:</span>
-                      <span>${formatPrice(currentData.low)}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>Volume:</span>
-                      <span>{currentData.volume?.toLocaleString()}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>Candle Start:</span>
-                      <span>{formatTime(currentData.start_time)}</span>
-                    </div>
-                    <div className="ticker-row">
-                      <span>Interval:</span>
-                      <span>{currentData.candle_interval}s</span>
-                    </div>
+                    <button
+                      onClick={handleSubscribeCandles}
+                      disabled={
+                        !isConnected || subscribedCandles.has(activeTicker)
+                      }
+                      className="ws-btn subscribe"
+                    >
+                      Subscribe Candles {activeTicker.split("-")[0]}
+                    </button>
+                    <button
+                      onClick={handleUnsubscribeCandles}
+                      disabled={!subscribedCandles.has(activeTicker)}
+                      className="ws-btn unsubscribe"
+                    >
+                      Unsubscribe Candles {activeTicker.split("-")[0]}
+                    </button>
                   </>
                 )}
+
+                <button
+                  onClick={handleSubscribeAll}
+                  disabled={
+                    !isConnected ||
+                    subscribedTickers.size === availableTickers.length
+                  }
+                  className="ws-btn subscribe-all"
+                >
+                  Subscribe All Tickers
+                </button>
+
+                <button
+                  onClick={handleSubscribeBoth}
+                  disabled={
+                    !isConnected ||
+                    (subscribedTickers.has(activeTicker) &&
+                      subscribedCandles.has(activeTicker))
+                  }
+                  className="ws-btn trading-optimal"
+                >
+                  🚀 Subscribe for Trading (Ticker + Candles)
+                </button>
+
+                {subscribedTickers.has(activeTicker) &&
+                  subscribedCandles.has(activeTicker) && (
+                    <button
+                      onClick={handleUnsubscribeBoth}
+                      className="ws-btn unsubscribe"
+                    >
+                      Unsubscribe Both
+                    </button>
+                  )}
+
+                <button
+                  onClick={fetchLastMessage}
+                  disabled={!isConnected}
+                  className="ws-btn fetch"
+                >
+                  Get Last
+                </button>
+
+                <button
+                  onClick={() => setShowRawData(!showRawData)}
+                  className="ws-btn debug"
+                >
+                  {showRawData ? "Hide" : "Show"} Raw Data
+                </button>
+
+                {subscribedCandles.has(activeTicker) && (
+                  <button
+                    onClick={sendCandlesToChat}
+                    disabled={!props.activeChatId || isSendingCandles}
+                    className="ws-btn trading-chat"
+                    style={{
+                      backgroundColor: isSendingCandles ? "#6b7280" : "#10b981",
+                    }}
+                  >
+                    {isSendingCandles ? "⏳ Sending..." : "💬 Send to Chat"}
+                  </button>
+                )}
               </div>
+
+              {/* Error display */}
+              {error && <div className="ws-error">⚠️ {error}</div>}
+
+              {/* Streaming status */}
+              <div className="ws-streaming-status">
+                <span
+                  className={`streaming-indicator ${
+                    isStreaming ? "active" : ""
+                  }`}
+                >
+                  {isStreaming ? "🔴 Live" : "⚫ Offline"}
+                </span>
+                <span>WebSocket: {connectionStatus}</span>
+                <span>
+                  Subscribed:{" "}
+                  {subscribedTickers.size > 0
+                    ? Array.from(subscribedTickers).join(", ")
+                    : "None"}
+                </span>
+              </div>
+
+              {/* Data display */}
+              {currentData && (
+                <div className="ws-ticker-data">
+                  <div className="ticker-main">
+                    <div className="ticker-price">
+                      <span className="currency">{activeTicker}</span>
+                      <span className="price">
+                        $
+                        {dataMode === "ticker"
+                          ? formatPrice(currentData.price)
+                          : formatPrice(currentData.close)}
+                      </span>
+                    </div>
+                    <div className="ticker-change">
+                      {dataMode === "ticker" ? (
+                        <span
+                          className={`change ${
+                            parseFloat(currentData.price) >
+                            parseFloat(currentData.open_24h)
+                              ? "positive"
+                              : "negative"
+                          }`}
+                        >
+                          {parseFloat(currentData.price) >
+                          parseFloat(currentData.open_24h)
+                            ? "↗"
+                            : "↘"}
+                        </span>
+                      ) : (
+                        <span
+                          className={`change ${
+                            currentData.close > currentData.open
+                              ? "positive"
+                              : "negative"
+                          }`}
+                        >
+                          {currentData.close > currentData.open ? "↗" : "↘"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="ticker-details">
+                    {dataMode === "ticker" ? (
+                      <>
+                        <div className="ticker-row">
+                          <span>Volume (24h):</span>
+                          <span>
+                            {parseFloat(
+                              currentData.volume_24h
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>High (24h):</span>
+                          <span>${formatPrice(currentData.high_24h)}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>Low (24h):</span>
+                          <span>${formatPrice(currentData.low_24h)}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>Last updated:</span>
+                          <span>{formatTime(currentData.time)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="ticker-row">
+                          <span>Open:</span>
+                          <span>${formatPrice(currentData.open)}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>High:</span>
+                          <span>${formatPrice(currentData.high)}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>Low:</span>
+                          <span>${formatPrice(currentData.low)}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>Volume:</span>
+                          <span>{currentData.volume?.toLocaleString()}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>Candle Start:</span>
+                          <span>{formatTime(currentData.start_time)}</span>
+                        </div>
+                        <div className="ticker-row">
+                          <span>Interval:</span>
+                          <span>{currentData.candle_interval}s</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Raw data display - Split into two containers */}
+              {showRawData && (
+                <div className="raw-data-display">
+                  <div className="raw-data-header">
+                    <h4>📡 Raw WebSocket Data</h4>
+                    <small>Live data streams from Coinbase WebSocket API</small>
+                  </div>
+
+                  <div className="raw-data-containers">
+                    {/* Left container - Candles data */}
+                    <div className="raw-data-container candles-container">
+                      <div className="raw-data-container-header">
+                        <h5>🕯️ Candles Channel (OHLCV)</h5>
+                        <span className="update-frequency">
+                          Updates: ~8 seconds
+                        </span>
+                      </div>
+                      <div className="raw-data-content">
+                        {lastCandlesMessage ? (
+                          <pre>
+                            {JSON.stringify(lastCandlesMessage, null, 2)}
+                          </pre>
+                        ) : (
+                          <div className="no-data">
+                            <p>No candles data received yet.</p>
+                            <small>
+                              Subscribe to candles channel to see OHLCV data
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right container - Ticker data */}
+                    <div className="raw-data-container ticker-container">
+                      <div className="raw-data-container-header">
+                        <h5>📊 Ticker Channel (Real-time)</h5>
+                        <span className="update-frequency">
+                          Updates: ~1 second
+                        </span>
+                      </div>
+                      <div className="raw-data-content">
+                        {lastTickerMessage ? (
+                          <pre>
+                            {JSON.stringify(lastTickerMessage, null, 2)}
+                          </pre>
+                        ) : (
+                          <div className="no-data">
+                            <p>No ticker data received yet.</p>
+                            <small>
+                              Subscribe to ticker channel to see live prices
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Raw data display - Split into two containers */}
-          {showRawData && (
-            <div className="raw-data-display">
-              <div className="raw-data-header">
-                <h4>📡 Raw WebSocket Data</h4>
-                <small>Live data streams from Coinbase WebSocket API</small>
+          {/* Signals Tab */}
+          {activeTab === "signals" && (
+            <div className="tab-content signals-tab">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "20px",
+                }}
+              >
+                <h3>🎯 Trading Signals</h3>
+                <button
+                  onClick={fetchTradingStatus}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: "#2196f3",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                  }}
+                >
+                  🔄 Refresh
+                </button>
               </div>
 
-              <div className="raw-data-containers">
-                {/* Left container - Candles data */}
-                <div className="raw-data-container candles-container">
-                  <div className="raw-data-container-header">
-                    <h5>🕯️ Candles Channel (OHLCV)</h5>
-                    <span className="update-frequency">
-                      Updates: ~8 seconds
-                    </span>
+              {activeSignal ? (
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "3px solid #2196f3",
+                    borderRadius: "10px",
+                    padding: "20px",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "24px",
+                      fontWeight: "bold",
+                      color: "#2196f3",
+                      marginBottom: "20px",
+                      textAlign: "center",
+                    }}
+                  >
+                    🎯 ACTIVE SIGNAL: {activeSignal.action}
                   </div>
-                  <div className="raw-data-content">
-                    {lastCandlesMessage ? (
-                      <pre>{JSON.stringify(lastCandlesMessage, null, 2)}</pre>
-                    ) : (
-                      <div className="no-data">
-                        <p>No candles data received yet.</p>
-                        <small>
-                          Subscribe to candles channel to see OHLCV data
-                        </small>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Right container - Ticker data */}
-                <div className="raw-data-container ticker-container">
-                  <div className="raw-data-container-header">
-                    <h5>📊 Ticker Channel (Real-time)</h5>
-                    <span className="update-frequency">Updates: ~1 second</span>
-                  </div>
-                  <div className="raw-data-content">
-                    {lastTickerMessage ? (
-                      <pre>{JSON.stringify(lastTickerMessage, null, 2)}</pre>
-                    ) : (
-                      <div className="no-data">
-                        <p>No ticker data received yet.</p>
-                        <small>
-                          Subscribe to ticker channel to see live prices
-                        </small>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, 1fr)",
+                      gap: "15px",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: "#e3f2fd",
+                        padding: "15px",
+                        borderRadius: "8px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#666",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        ENTRY TRIGGER
                       </div>
-                    )}
+                      <div
+                        style={{
+                          fontSize: "20px",
+                          fontWeight: "bold",
+                          color: "#1976d2",
+                        }}
+                      >
+                        {activeSignal.trigger_type} $
+                        {activeSignal.trigger_price?.toLocaleString()}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#ffebee",
+                        padding: "15px",
+                        borderRadius: "8px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#666",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        STOP LOSS
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "20px",
+                          fontWeight: "bold",
+                          color: "#d32f2f",
+                        }}
+                      >
+                        ${activeSignal.stop_loss?.toLocaleString() || "N/A"}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#e8f5e8",
+                        padding: "15px",
+                        borderRadius: "8px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#666",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        TAKE PROFIT
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "20px",
+                          fontWeight: "bold",
+                          color: "#388e3c",
+                        }}
+                      >
+                        ${activeSignal.take_profit?.toLocaleString() || "N/A"}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#fff3e0",
+                        padding: "15px",
+                        borderRadius: "8px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#666",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        CONFIDENCE
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "20px",
+                          fontWeight: "bold",
+                          color: "#ff9800",
+                        }}
+                      >
+                        {activeSignal.confidence}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#f5f5f5",
+                      padding: "15px",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: "bold",
+                        marginBottom: "10px",
+                        color: "#333",
+                      }}
+                    >
+                      💡 ANALYSIS:
+                    </div>
+                    <div style={{ color: "#666", lineHeight: "1.4" }}>
+                      {activeSignal.reasoning}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "40px",
+                    color: "#666",
+                  }}
+                >
+                  <h4>📊 No Active Signal</h4>
+                  <p>
+                    No trading signals currently active. Click refresh to check
+                    for new signals.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
