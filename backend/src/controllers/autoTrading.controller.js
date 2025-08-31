@@ -17,6 +17,7 @@ import {
   getSignalStatus,
   resetSignals,
 } from "../services/signalManager.service.js";
+import { getCurrentTickerData } from "../services/coinbase.service.js";
 import { Message } from "../models/message.js";
 
 /**
@@ -151,11 +152,35 @@ export async function processRAGResponseController(req, res) {
       });
     }
 
-    await processRAGResponse(ragResponse, source || "MANUAL_API");
+    // Get current ticker data for AI agent function calling
+    const currentTickerData = getCurrentTickerData();
+
+    if (!currentTickerData) {
+      console.warn(
+        "⚠️ No ticker data available - AI agent needs live market context"
+      );
+      return res.status(400).json({
+        success: false,
+        error: "No live ticker data available for AI agent function calling",
+        status: getAutoTradingStatus(),
+      });
+    }
+
+    const processResult = await processRAGResponse(
+      ragResponse,
+      source || "MANUAL_API",
+      currentTickerData
+    );
 
     res.json({
       success: true,
-      message: "RAG response processed",
+      message: "RAG response processed with AI Agent function calling",
+      ai_agent_result: processResult,
+      ticker_data: {
+        price: currentTickerData.price,
+        change_24h: currentTickerData.price_percent_change_24_h,
+        timestamp: currentTickerData.time,
+      },
       status: getAutoTradingStatus(),
     });
   } catch (error) {
@@ -264,14 +289,38 @@ export async function checkRAGResponseController(req, res) {
     console.log(`🔍 Processing latest RAG response from chat ${chatId}`);
     console.log(`📝 RAG response length: ${ragResponse.length} characters`);
 
-    // Process the RAG response for trading signals
-    await processRAGResponse(ragResponse, source || `CHAT_${chatId}`);
+    // Get current ticker data for AI agent function calling
+    const currentTickerData = getCurrentTickerData();
+
+    if (!currentTickerData) {
+      console.warn(
+        "⚠️ No ticker data available - AI agent needs live market context"
+      );
+      return res.status(400).json({
+        success: false,
+        error: "No live ticker data available for AI agent function calling",
+        status: getAutoTradingStatus(),
+      });
+    }
+
+    // Process the RAG response for trading signals with AI agent function calling
+    const processResult = await processRAGResponse(
+      ragResponse,
+      source || `CHAT_${chatId}`,
+      currentTickerData
+    );
 
     res.json({
       success: true,
-      message: "RAG response processed for trading signals",
+      message: "RAG response processed with AI Agent function calling",
       chat_id: chatId,
       response_length: ragResponse.length,
+      ai_agent_result: processResult,
+      ticker_data: {
+        price: currentTickerData.price,
+        change_24h: currentTickerData.price_percent_change_24_h,
+        timestamp: currentTickerData.time,
+      },
       status: getAutoTradingStatus(),
     });
   } catch (error) {

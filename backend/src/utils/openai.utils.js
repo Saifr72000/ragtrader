@@ -1,3 +1,14 @@
+import OpenAI from "openai";
+import {
+  tradingFunctions,
+  getAgenticTradingPrompt,
+} from "../config/tradingFunctions.js";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Legacy system prompt (kept for backward compatibility)
 export const systemPrompt = `
 You are a highly specialized trading assistant and expert candlestick chart analyst, trained to interpret technical analysis material, chart patterns, and trading signals using the principles from the "Candlestick Trading Bible" by Munehisa Homma.
 
@@ -55,23 +66,89 @@ TRADING_SIGNAL: {"action": "BUY|SELL|WAIT", "trigger_type": "ABOVE|BELOW|EQUAL|I
 - **Adapt to Query Type:** Match your response style to the type of question being asked
 - **MANDATORY:** For any OHLC analysis, include the TRADING_SIGNAL JSON block at the end
 
-**Examples:**
-
-**Image Analysis Query:**
-User: "What pattern is this?" [image]
-Response: [Structured format with pattern identification]
-
-**Follow-up Question:**
-User: "Are you sure it's a Bullish Engulfing bar?"
-Response: "Yes, I'm confident it's a Bullish Engulfing pattern because the second candle completely engulfs the first bearish candle, showing strong buying pressure. This is a classic reversal signal, especially after a downtrend."
-
-**General Question:**
-User: "What are the key principles of candlestick trading?"
-Response: "Based on the Candlestick Trading Bible, the key principles include..."
-
-**OHLC Analysis Query:**
-User: "📊 **COMPLETED 5-MINUTE CANDLE DATA:** [OHLC data] Please analyze this completed candle..."
-Response: "[Detailed technical analysis]... TRADING_SIGNAL: {"action": "BUY", "trigger_type": "ABOVE", "trigger_price": 108450, "confidence": "HIGH", "reasoning": "Bullish breakout above resistance"}"
-
 Your goal: **provide accurate, helpful trading insights while adapting your response style to the specific query type, and always include trading signals for OHLC analysis.**
 `;
+
+/**
+ * Run chat completion with optional function calling for AI trading agent
+ * @param {Object} options - Configuration options
+ * @param {string} options.systemPrompt - System prompt (optional, uses agentic prompt if tickerData provided)
+ * @param {Array} options.messages - Chat messages
+ * @param {Object} options.tickerData - Live ticker data for agentic trading
+ * @param {boolean} options.useFunctionCalling - Enable function calling for AI agent
+ * @returns {Object} OpenAI response
+ */
+export async function runChatCompletion({
+  systemPrompt: customSystemPrompt,
+  messages,
+  tickerData = null,
+  useFunctionCalling = false,
+}) {
+  // Determine system prompt
+  let finalSystemPrompt;
+  if (useFunctionCalling && tickerData) {
+    // Use agentic trading prompt with live data
+    finalSystemPrompt = getAgenticTradingPrompt(tickerData);
+    console.log("🤖 Using AI Agent mode with function calling enabled");
+    console.log(`📊 Live price context: $${tickerData.price}`);
+  } else {
+    // Use custom or legacy prompt
+    finalSystemPrompt = customSystemPrompt || systemPrompt;
+    console.log("📝 Using standard analysis mode");
+  }
+
+  // Build request configuration
+  const requestConfig = {
+    model: "gpt-4",
+    messages: [{ role: "system", content: finalSystemPrompt }, ...messages],
+  };
+
+  // Add function calling if enabled
+  if (useFunctionCalling) {
+    requestConfig.functions = tradingFunctions;
+    requestConfig.function_call = "auto"; // Let GPT decide when to call functions
+    console.log(
+      `🛠️ Function calling enabled with ${tradingFunctions.length} trading functions`
+    );
+  }
+
+  console.log("🚀 Sending request to OpenAI GPT-4...");
+  const response = await openai.chat.completions.create(requestConfig);
+
+  const choice = response.choices[0];
+
+  // Log response type
+  if (choice.message.function_call) {
+    console.log(
+      `🎯 AI Agent called function: ${choice.message.function_call.name}`
+    );
+    console.log(
+      `📋 Function arguments:`,
+      JSON.parse(choice.message.function_call.arguments)
+    );
+  } else {
+    console.log("💬 AI responded with message content");
+    if (useFunctionCalling) {
+      console.log(
+        "ℹ️ AI chose not to call any functions - likely waiting for confirmation"
+      );
+    }
+  }
+
+  return choice;
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use runChatCompletion with useFunctionCalling: false instead
+ */
+export async function runLegacyChatCompletion({
+  systemPrompt: customSystemPrompt,
+  messages,
+}) {
+  return await runChatCompletion({
+    systemPrompt: customSystemPrompt,
+    messages,
+    useFunctionCalling: false,
+  });
+}

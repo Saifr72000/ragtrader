@@ -16,6 +16,17 @@ let lastKnownCandleStartTime = null;
 let webSocketConnectedAt = null;
 let isConnectionStabilized = false;
 
+// Store latest ticker data for AI agent
+let latestTickerData = null;
+
+/**
+ * Get current ticker data for AI agent
+ * @returns {Object|null} Latest ticker data
+ */
+export function getCurrentTickerData() {
+  return latestTickerData;
+}
+
 /**
  * Reset candle completion tracking (call when WebSocket connects)
  */
@@ -407,6 +418,10 @@ export function connectToCoinbase(url = lastUrl) {
           msg.events[0].tickers[0]
         ) {
           const tickerData = msg.events[0].tickers[0];
+
+          // Store latest ticker data for AI agent
+          latestTickerData = tickerData;
+
           // Process ticker data for automated trading signals
           monitorTickerForSignals(tickerData);
         }

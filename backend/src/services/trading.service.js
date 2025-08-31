@@ -108,6 +108,72 @@ export function calculatePositionValue(btcPrice) {
 }
 
 /**
+ * Execute a buy order (for AI Agent function calling)
+ * @param {Object} orderConfig - Order configuration
+ * @returns {Object} Order result
+ */
+export async function executeBuyOrder(orderConfig) {
+  try {
+    console.log(`🤖 AI Agent executing BUY order`);
+    console.log("📤 Order config:", JSON.stringify(orderConfig, null, 2));
+
+    const result = await createOrder({
+      ...orderConfig,
+      side: "BUY",
+    });
+
+    if (result.success) {
+      console.log("✅ AI Agent BUY order executed successfully:", result.data);
+      return {
+        success: true,
+        orderId: result.data.order_id,
+        orderData: result.data,
+        executedBy: "AI_AGENT",
+      };
+    } else {
+      console.error("❌ AI Agent BUY order failed:", result.error);
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error("💥 AI Agent buy order error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Execute a sell order (for AI Agent function calling)
+ * @param {Object} orderConfig - Order configuration
+ * @returns {Object} Order result
+ */
+export async function executeSellOrder(orderConfig) {
+  try {
+    console.log(`🤖 AI Agent executing SELL order`);
+    console.log("📤 Order config:", JSON.stringify(orderConfig, null, 2));
+
+    const result = await createOrder({
+      ...orderConfig,
+      side: "SELL",
+    });
+
+    if (result.success) {
+      console.log("✅ AI Agent SELL order executed successfully:", result.data);
+      return {
+        success: true,
+        orderId: result.data.order_id,
+        orderData: result.data,
+        executedBy: "AI_AGENT",
+      };
+    } else {
+      console.error("❌ AI Agent SELL order failed:", result.error);
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error("💥 AI Agent sell order error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Get trading configuration
  */
 export function getTradingConfig() {

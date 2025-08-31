@@ -3,7 +3,15 @@
  * Orchestrates RAG response parsing, signal management, ticker monitoring, and trade execution
  */
 
-import { extractTradingSignal } from "./signalExtractor.service.js";
+import { executeTradingFunction } from "./functionExecutor.service.js";
+import {
+  checkAllTriggers,
+  getActiveTriggers,
+  clearAllTriggers,
+  getMonitoringStats,
+  getExecutionHistory,
+} from "./priceMonitor.service.js";
+import { runChatCompletion } from "../utils/openai.utils.js";
 import {
   setActiveSignal,
   getActiveSignal,
@@ -54,68 +62,130 @@ export function isAutoTradingActive() {
 }
 
 /**
- * Process RAG response for trading signals
- * @param {string} ragResponse - RAG's latest trading analysis
+ * Process RAG response using AI Agent Function Calling
+ * @param {string} ragResponse - RAG's latest trading analysis message content
  * @param {string} source - Source identifier (e.g., chat ID)
+ * @param {Object} tickerData - Current live ticker data
  */
-export async function processRAGResponse(ragResponse, source = "unknown") {
+export async function processRAGResponse(
+  ragResponse,
+  source = "unknown",
+  tickerData = null
+) {
   try {
     if (!isAutoTradingEnabled) {
       console.log("⚠️ Auto trading disabled, skipping RAG processing");
-      return;
+      return { success: false, reason: "Auto trading disabled" };
     }
 
-    console.log("🔍 Processing RAG response for trading signals...");
+    console.log("🤖 Processing RAG response with AI Agent Function Calling...");
+    console.log(`📊 Source: ${source}`);
 
-    // Extract trading signal from RAG response (no additional OpenAI call needed)
-    const extractedSignal = extractTradingSignal(ragResponse);
-
-    if (!extractedSignal) {
-      console.error("💥 Failed to extract trading signal");
-      return;
+    if (!tickerData) {
+      console.warn(
+        "⚠️ No ticker data provided - function calling needs live market context"
+      );
+      return {
+        success: false,
+        reason: "Live ticker data required for AI agent",
+      };
     }
 
-    // Clear any existing signal (new 5-min analysis overwrites previous)
-    clearActiveSignal("NEW_5MIN_ANALYSIS");
+    // Use function calling to let AI agent make trading decisions
+    const messages = [
+      {
+        role: "user",
+        content: `Based on this completed 5-minute candle analysis, make your trading decision:
 
-    // Set new active signal if actionable
-    if (extractedSignal.action === "BUY" || extractedSignal.action === "SELL") {
-      const signalSet = setActiveSignal(extractedSignal, source);
+${ragResponse}
 
-      if (signalSet) {
-        console.log(
-          `🎯 New trading signal activated: ${extractedSignal.action}`
-        );
+Current market context:
+- Live Price: $${tickerData.price}
+- 24h Change: ${tickerData.price_percent_change_24_h}%
+- Volume: ${tickerData.volume_24h} BTC
 
-        // Start ticker monitoring if we have a conditional signal
-        if (
-          extractedSignal.trigger_type &&
-          extractedSignal.trigger_type !== "IMMEDIATE"
-        ) {
-          startTickerMonitoring();
-        } else if (extractedSignal.trigger_type === "IMMEDIATE") {
-          // Execute immediately
-          await executeSignalImmediately(extractedSignal);
-        }
-      }
+Use your function calling capabilities to execute the appropriate trading action based on this analysis.`,
+      },
+    ];
+
+    console.log("🚀 Sending analysis to AI Agent with function calling...");
+
+    // Call OpenAI with function calling enabled
+    const aiResponse = await runChatCompletion({
+      messages,
+      tickerData,
+      useFunctionCalling: true,
+    });
+
+    // Check if AI called a function
+    if (aiResponse.message.function_call) {
+      console.log(
+        `🎯 AI Agent made a function call: ${aiResponse.message.function_call.name}`
+      );
+
+      // Execute the function call
+      const functionResult = await executeTradingFunction(
+        aiResponse.message.function_call,
+        tickerData
+      );
+
+      console.log("✅ Function execution result:", functionResult);
+
+      // Clear old signals since we're using the new price monitoring system
+      clearActiveSignal("AI_AGENT_NEW_DECISION");
+
+      return {
+        success: true,
+        ai_function_called: aiResponse.message.function_call.name,
+        function_arguments: JSON.parse(
+          aiResponse.message.function_call.arguments
+        ),
+        execution_result: functionResult,
+        source,
+        timestamp: new Date().toISOString(),
+      };
     } else {
-      console.log("⚪ RAG signal: WAIT - No trading action required");
+      // AI chose not to call any functions (likely wait_for_confirmation)
+      console.log("⏸️ AI Agent chose to wait - no function called");
+      console.log("💬 AI Response:", aiResponse.message.content);
+
+      // Clear any active triggers since AI is waiting
+      clearAllTriggers();
+      clearActiveSignal("AI_AGENT_WAITING");
+
+      return {
+        success: true,
+        ai_decision: "WAIT",
+        ai_reasoning: aiResponse.message.content,
+        source,
+        timestamp: new Date().toISOString(),
+      };
     }
   } catch (error) {
-    console.error("💥 Error processing RAG response:", error.message);
+    console.error("💥 Error in AI Agent processing:", error.message);
+    return {
+      success: false,
+      error: error.message,
+      source,
+      timestamp: new Date().toISOString(),
+    };
   }
 }
 
 /**
- * Monitor ticker data for signal triggers
+ * Monitor ticker data for AI Agent triggers (Real-time execution engine)
  * @param {Object} tickerData - Real-time ticker data
  */
-export function monitorTickerForSignals(tickerData) {
+export async function monitorTickerForSignals(tickerData) {
   try {
-    if (!isAutoTradingEnabled || !tickerMonitoringActive) {
+    if (!isAutoTradingEnabled) {
       return;
     }
 
+    // Use the new price monitoring system for real-time trigger checking
+    await checkAllTriggers(tickerData);
+
+    // Legacy signal monitoring (keep for backward compatibility)
     const activeSignal = getActiveSignal();
     if (!activeSignal || activeSignal.status !== "ACTIVE") {
       return;
@@ -281,15 +351,31 @@ function stopTickerMonitoring() {
 }
 
 /**
- * Get auto trading status
+ * Get auto trading status including AI Agent monitoring
  * @returns {Object} Complete trading engine status
  */
 export function getAutoTradingStatus() {
+  const monitoringStats = getMonitoringStats();
+  const activeTriggers = getActiveTriggers();
+  const executionHistory = getExecutionHistory();
+
   return {
     auto_trading_enabled: isAutoTradingEnabled,
     ticker_monitoring_active: tickerMonitoringActive,
     last_processed_message: lastProcessedMessageId,
     signal_status: getSignalStatus(),
+    // New AI Agent monitoring data
+    ai_agent_mode: true,
+    price_monitoring: {
+      active_triggers: activeTriggers.length,
+      monitoring_stats: monitoringStats,
+      recent_triggers: activeTriggers.slice(0, 5), // Show last 5 triggers
+    },
+    execution_history: {
+      total_executions: executionHistory.length,
+      recent_executions: executionHistory.slice(-5), // Show last 5 executions
+      success_rate: monitoringStats.success_rate,
+    },
   };
 }
 
@@ -301,6 +387,10 @@ export function emergencyStop() {
   disableAutoTrading();
   stopTickerMonitoring();
   clearActiveSignal("EMERGENCY_STOP");
+
+  // Clear all AI Agent price triggers
+  clearAllTriggers();
+  console.log("🧹 All AI Agent price triggers cleared");
 }
 
 /**
