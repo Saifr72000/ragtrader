@@ -135,52 +135,75 @@ export function addCandle(rawCandleData) {
       const currentStartTime = formattedCandle.start_time;
 
       // Detect candle completion by start time change
+      // Only trigger completion if enough time has passed (at least 4 minutes)
       if (lastCandleStartTime && currentStartTime !== lastCandleStartTime) {
-        // NEW CANDLE PERIOD = Previous candle completed!
-        console.log(`✅ CANDLE COMPLETION DETECTED!`);
-        console.log(
-          `   Previous: ${new Date(lastCandleStartTime * 1000).toISOString()}`
-        );
-        console.log(
-          `   New: ${new Date(currentStartTime * 1000).toISOString()}`
-        );
+        const timeDifferenceMs =
+          (currentStartTime - lastCandleStartTime) * 1000;
+        const timeDifferenceMinutes = timeDifferenceMs / (1000 * 60);
 
-        // The previous live candle is now completed - add it to RAG buffer
-        if (
-          currentLiveCandle &&
-          currentLiveCandle.start_time === lastCandleStartTime
-        ) {
-          const completedVersion = { ...currentLiveCandle };
+        // Only add to completed buffer if at least 4 minutes have passed
+        if (timeDifferenceMinutes >= 4) {
+          // NEW CANDLE PERIOD = Previous candle completed!
+          console.log(`✅ CANDLE COMPLETION DETECTED (Buffer)!`);
+          console.log(
+            `   Previous: ${new Date(lastCandleStartTime * 1000).toISOString()}`
+          );
+          console.log(
+            `   New: ${new Date(currentStartTime * 1000).toISOString()}`
+          );
+          console.log(
+            `   Time difference: ${timeDifferenceMinutes.toFixed(1)} minutes`
+          );
 
-          // Check if we already have this candle in completed buffer
-          const lastCompleted = completedCandles[completedCandles.length - 1];
-          const alreadyExists =
-            lastCompleted &&
-            lastCompleted.start_time === completedVersion.start_time;
+          // The previous live candle is now completed - add it to RAG buffer
+          if (
+            currentLiveCandle &&
+            currentLiveCandle.start_time === lastCandleStartTime
+          ) {
+            const completedVersion = { ...currentLiveCandle };
 
-          if (!alreadyExists) {
-            completedCandles.push(completedVersion);
+            // Check if we already have this candle in completed buffer
+            const lastCompleted = completedCandles[completedCandles.length - 1];
+            const alreadyExists =
+              lastCompleted &&
+              lastCompleted.start_time === completedVersion.start_time;
 
-            // Remove oldest if buffer exceeds max size
-            if (completedCandles.length > maxSize) {
-              completedCandles.shift();
-            }
+            if (!alreadyExists) {
+              completedCandles.push(completedVersion);
 
-            console.log(
-              `🎯 NEWLY COMPLETED CANDLE added to RAG buffer: ${new Date(
-                completedVersion.start_time * 1000
-              ).toISOString()}`
-            );
+              // Remove oldest if buffer exceeds max size
+              if (completedCandles.length > maxSize) {
+                completedCandles.shift();
+              }
 
-            // Update ready status - Ready immediately when we have any completed candles
-            if (!isReady && completedCandles.length > 0) {
-              isReady = true;
               console.log(
-                `🎯 Candle buffer is READY! Collected ${completedCandles.length} completed candles for RAG analysis`
+                `🎯 NEWLY COMPLETED CANDLE added to RAG buffer: ${new Date(
+                  completedVersion.start_time * 1000
+                ).toISOString()}`
               );
+
+              // Update ready status - Ready immediately when we have any completed candles
+              if (!isReady && completedCandles.length > 0) {
+                isReady = true;
+                console.log(
+                  `🎯 Candle buffer is READY! Collected ${completedCandles.length} completed candles for RAG analysis`
+                );
+              }
             }
           }
+        } else {
+          console.log(
+            `⏭️ Buffer: Candle start time changed but only ${timeDifferenceMinutes.toFixed(
+              1
+            )} minutes passed - not adding to completed buffer`
+          );
         }
+      } else if (!lastCandleStartTime) {
+        console.log(
+          `🔄 Buffer: Initial candle timestamp set: ${new Date(
+            currentStartTime * 1000
+          ).toISOString()}`
+        );
       }
 
       // Update current live candle and tracking

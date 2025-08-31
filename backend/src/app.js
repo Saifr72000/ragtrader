@@ -8,6 +8,7 @@ import chatRoutes from "./routes/chat.route.js";
 import messageRoutes from "./routes/message.route.js";
 import polygonRoutes from "./routes/polygon.route.js";
 import coinbaseRoutes from "./routes/coinbase.route.js";
+import autoTradingRoutes from "./routes/autoTrading.route.js";
 import cors from "cors";
 
 // Load environment variables
@@ -38,6 +39,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/message", messageRoutes);
 app.use("/api/polygon", polygonRoutes);
 app.use("/api/coinbase", coinbaseRoutes);
+app.use("/api/auto-trading", autoTradingRoutes);
 app.get("/", (req, res) => {
   res.send("🚀 Server is running");
 });

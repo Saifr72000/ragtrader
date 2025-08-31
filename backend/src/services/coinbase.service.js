@@ -4,9 +4,38 @@ import jwt from "jsonwebtoken";
 import axios from "axios";
 import { generateJWT } from "../utils/coinbase.utils.js";
 import { addCandle, getAllCompletedCandles } from "./candleBuffer.service.js";
+import {
+  monitorTickerForSignals,
+  processRAGResponse,
+  isAutoTradingActive,
+  initializeAutoTrading,
+} from "./autoTrading.service.js";
 
 // State tracking for candle completion detection
 let lastKnownCandleStartTime = null;
+let webSocketConnectedAt = null;
+let isConnectionStabilized = false;
+
+/**
+ * Reset candle completion tracking (call when WebSocket connects)
+ */
+function resetCandleCompletionTracking() {
+  lastKnownCandleStartTime = null;
+  webSocketConnectedAt = new Date();
+  isConnectionStabilized = false;
+
+  // Mark connection as stabilized after 30 seconds
+  setTimeout(() => {
+    isConnectionStabilized = true;
+    console.log(
+      "🟢 WebSocket connection stabilized - candle completion detection enabled"
+    );
+  }, 30000);
+
+  console.log(
+    "🔄 Candle completion tracking reset for new WebSocket connection"
+  );
+}
 
 /* Buy and sell functions */
 
@@ -99,6 +128,14 @@ export async function getOrders() {
  */
 async function checkForCandleCompletion(candleMessage) {
   try {
+    // Don't process candle completion until connection is stabilized
+    if (!isConnectionStabilized) {
+      console.log(
+        "⏸️ Connection not yet stabilized - skipping candle completion check"
+      );
+      return;
+    }
+
     if (
       !candleMessage.events ||
       !candleMessage.events[0] ||
@@ -110,23 +147,54 @@ async function checkForCandleCompletion(candleMessage) {
     const currentCandle = candleMessage.events[0].candles[0];
     const currentStartTime = parseInt(currentCandle.start);
 
+    // Only trigger candle completion if we have a previous timestamp AND
+    // enough time has passed (at least 4 minutes) to ensure it's a real completion
     if (
       lastKnownCandleStartTime &&
       currentStartTime !== lastKnownCandleStartTime
     ) {
-      // Candle completion detected!
-      console.log(`🎯 CANDLE COMPLETION DETECTED!`);
+      const timeDifferenceMs =
+        (currentStartTime - lastKnownCandleStartTime) * 1000;
+      const timeDifferenceMinutes = timeDifferenceMs / (1000 * 60);
+
+      // Only trigger if at least 4 minutes have passed (to account for 5-minute candles)
+      // This prevents false triggers from initial WebSocket connection
+      if (timeDifferenceMinutes >= 4) {
+        // Candle completion detected!
+        console.log(`🎯 CANDLE COMPLETION DETECTED!`);
+        console.log(
+          `   Previous: ${new Date(
+            lastKnownCandleStartTime * 1000
+          ).toISOString()}`
+        );
+        console.log(
+          `   Current: ${new Date(currentStartTime * 1000).toISOString()}`
+        );
+        console.log(
+          `   Time difference: ${timeDifferenceMinutes.toFixed(1)} minutes`
+        );
+
+        // Send completed candle to RAG
+        await triggerRAGForCompletedCandle(lastKnownCandleStartTime);
+      } else {
+        console.log(
+          `⏭️ Candle start time changed but only ${timeDifferenceMinutes.toFixed(
+            1
+          )} minutes passed - likely initial connection, not triggering RAG`
+        );
+      }
+    } else if (!lastKnownCandleStartTime) {
       console.log(
-        `   Previous: ${new Date(
-          lastKnownCandleStartTime * 1000
+        `🔄 Initial candle timestamp set: ${new Date(
+          currentStartTime * 1000
         ).toISOString()}`
       );
+    } else {
       console.log(
-        `   Current: ${new Date(currentStartTime * 1000).toISOString()}`
+        `📊 Same candle period continuing: ${new Date(
+          currentStartTime * 1000
+        ).toISOString()}`
       );
-
-      // Send completed candle to RAG
-      await triggerRAGForCompletedCandle(lastKnownCandleStartTime);
     }
 
     // Update tracking
@@ -286,6 +354,12 @@ export function connectToCoinbase(url = lastUrl) {
   ws.on("open", () => {
     console.log("✅ Connected to Coinbase Advanced Trade WebSocket");
 
+    // Reset candle completion tracking for fresh start
+    resetCandleCompletionTracking();
+
+    // Initialize auto trading
+    initializeAutoTrading();
+
     // Subscribe to heartbeats to keep connection alive
     console.log("🔔 Subscribing to heartbeats...");
     send({
@@ -324,6 +398,18 @@ export function connectToCoinbase(url = lastUrl) {
         await checkForCandleCompletion(msg);
       } else if (msg.channel === "ticker") {
         console.log("📊 Received ticker data");
+
+        // Extract ticker data for automated trading
+        if (
+          msg.events &&
+          msg.events[0] &&
+          msg.events[0].tickers &&
+          msg.events[0].tickers[0]
+        ) {
+          const tickerData = msg.events[0].tickers[0];
+          // Process ticker data for automated trading signals
+          monitorTickerForSignals(tickerData);
+        }
       } else if (msg.channel === "heartbeats") {
         console.log("💓 Heartbeat received");
       } else {
