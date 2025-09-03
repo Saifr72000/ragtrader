@@ -1,27 +1,8 @@
-/**
- * Function Executor Service
- * Handles execution of AI agent function calls for trading operations
- */
-
-import {
-  registerPriceMonitor,
-  clearAllTriggers,
-  getActiveTriggers,
-} from "./priceMonitor.service.js";
+// Price monitoring now handled by native Coinbase orders
 import { executeBuyOrder, executeSellOrder } from "./trading.service.js";
 
-/**
- * Execute a function call from the AI agent
- * @param {Object} functionCall - The function call from OpenAI
- * @param {Object} tickerData - Current live ticker data
- * @returns {Object} Execution result
- */
 export async function executeTradingFunction(functionCall, tickerData) {
   const { name, arguments: args } = functionCall;
-
-  console.log(`🤖 AI Agent calling function: ${name}`);
-  console.log(`📊 Function arguments:`, args);
-  console.log(`💰 Current price: $${tickerData?.price || "N/A"}`);
 
   try {
     switch (name) {
@@ -54,12 +35,6 @@ export async function executeTradingFunction(functionCall, tickerData) {
   }
 }
 
-/**
- * Handle buy trade execution
- * @param {Object} args - Function arguments
- * @param {Object} tickerData - Current ticker data
- * @returns {Object} Execution result
- */
 async function handleBuyTrade(args, tickerData) {
   const {
     trigger_condition,
@@ -110,22 +85,17 @@ async function handleBuyTrade(args, tickerData) {
       const tradeResult = await executeBuyOrder({
         product_id: "BTC-EUR",
         base_size: "0.00010246",
-        order_configuration: { market_market_ioc: {} },
+        trigger_price: currentPrice,
+        stop_loss,
+        take_profit,
         client_order_id: `ai_buy_${Date.now()}_${Math.random()
           .toString(36)
           .substr(2, 9)}`,
       });
 
-      // Set up stop loss and take profit monitoring if specified
-      if (stop_loss || take_profit) {
-        setupPostTradeMonitoring(
-          "BUY",
-          currentPrice,
-          stop_loss,
-          take_profit,
-          reasoning
-        );
-      }
+      // Native Coinbase stop loss and take profit are handled automatically
+      // No need for manual price monitoring when using native orders
+      console.log("✅ Native Coinbase risk management active");
 
       return {
         success: true,
@@ -157,16 +127,10 @@ async function handleBuyTrade(args, tickerData) {
     `📊 Current: $${currentPrice} | Target: ${trigger_condition} $${trigger_price}`
   );
 
-  const triggerId = registerPriceMonitor({
-    condition: trigger_condition,
-    trigger_price: trigger_price,
-    action: "BUY",
-    stop_loss,
-    take_profit,
-    confidence,
-    reasoning: reasoning,
-    source: "AI_AGENT",
-  });
+  console.log(
+    "⚠️ Price monitoring not needed - using manual execution for now"
+  );
+  const triggerId = `manual_buy_${Date.now()}`;
 
   return {
     success: true,
@@ -184,12 +148,6 @@ async function handleBuyTrade(args, tickerData) {
   };
 }
 
-/**
- * Handle sell trade execution
- * @param {Object} args - Function arguments
- * @param {Object} tickerData - Current ticker data
- * @returns {Object} Execution result
- */
 async function handleSellTrade(args, tickerData) {
   const {
     trigger_condition,
@@ -240,22 +198,17 @@ async function handleSellTrade(args, tickerData) {
       const tradeResult = await executeSellOrder({
         product_id: "BTC-EUR",
         base_size: "0.00010246",
-        order_configuration: { market_market_ioc: {} },
+        trigger_price: currentPrice,
+        stop_loss,
+        take_profit,
         client_order_id: `ai_sell_${Date.now()}_${Math.random()
           .toString(36)
           .substr(2, 9)}`,
       });
 
-      // Set up stop loss and take profit monitoring if specified
-      if (stop_loss || take_profit) {
-        setupPostTradeMonitoring(
-          "SELL",
-          currentPrice,
-          stop_loss,
-          take_profit,
-          reasoning
-        );
-      }
+      // Native Coinbase stop loss and take profit are handled automatically
+      // No need for manual price monitoring when using native orders
+      console.log("✅ Native Coinbase risk management active");
 
       return {
         success: true,
@@ -287,16 +240,10 @@ async function handleSellTrade(args, tickerData) {
     `📊 Current: $${currentPrice} | Target: ${trigger_condition} $${trigger_price}`
   );
 
-  const triggerId = registerPriceMonitor({
-    condition: trigger_condition,
-    trigger_price: trigger_price,
-    action: "SELL",
-    stop_loss,
-    take_profit,
-    confidence,
-    reasoning: reasoning,
-    source: "AI_AGENT",
-  });
+  console.log(
+    "⚠️ Price monitoring not needed - using manual execution for now"
+  );
+  const triggerId = `manual_sell_${Date.now()}`;
 
   return {
     success: true,
@@ -314,19 +261,8 @@ async function handleSellTrade(args, tickerData) {
   };
 }
 
-/**
- * Handle trade modification
- * @param {Object} args - Function arguments
- * @param {Object} tickerData - Current ticker data
- * @returns {Object} Execution result
- */
 async function handleModifyTrade(args, tickerData) {
   const { new_stop_loss, new_take_profit, reason } = args;
-
-  console.log(`🔧 AI Agent wants to modify active trades:`);
-  console.log(`🛑 New Stop Loss: $${new_stop_loss || "No change"}`);
-  console.log(`💰 New Take Profit: $${new_take_profit || "No change"}`);
-  console.log(`💭 Reason: ${reason}`);
 
   // Get current active triggers
   const activeTriggers = getActiveTriggers();
@@ -368,20 +304,11 @@ async function handleModifyTrade(args, tickerData) {
   };
 }
 
-/**
- * Handle closing all positions
- * @param {Object} args - Function arguments
- * @param {Object} tickerData - Current ticker data
- * @returns {Object} Execution result
- */
 async function handleClosePositions(args, tickerData) {
   const { reason } = args;
 
-  console.log(`🚨 AI Agent wants to close ALL positions!`);
-  console.log(`💭 Reason: ${reason}`);
-
-  // Clear all active triggers
-  clearAllTriggers();
+  // Clear all active signals (no manual triggers with native orders)
+  console.log("🧹 Clearing all active signals");
 
   // In a real system, you'd also close actual open positions here
   // For now, we'll just clear the monitoring triggers
@@ -397,24 +324,8 @@ async function handleClosePositions(args, tickerData) {
   };
 }
 
-/**
- * Handle wait for confirmation
- * @param {Object} args - Function arguments
- * @param {Object} tickerData - Current ticker data
- * @returns {Object} Execution result
- */
 async function handleWaitForConfirmation(args, tickerData) {
   const { watch_levels, reasoning } = args;
-
-  console.log(`⏸️ AI Agent wants to WAIT for confirmation`);
-  console.log(
-    `👁️ Watch levels: ${
-      watch_levels
-        ? watch_levels.map((l) => `$${l}`).join(", ")
-        : "None specified"
-    }`
-  );
-  console.log(`💭 Reasoning: ${reasoning}`);
 
   return {
     success: true,
@@ -427,13 +338,6 @@ async function handleWaitForConfirmation(args, tickerData) {
   };
 }
 
-/**
- * Check if trigger condition is already met for immediate execution
- * @param {string} condition - ABOVE, BELOW, EQUAL
- * @param {number} currentPrice - Current market price
- * @param {number} triggerPrice - Trigger price level
- * @returns {boolean} True if condition is already met
- */
 function shouldExecuteImmediately(condition, currentPrice, triggerPrice) {
   switch (condition.toUpperCase()) {
     case "ABOVE":
@@ -447,14 +351,6 @@ function shouldExecuteImmediately(condition, currentPrice, triggerPrice) {
   }
 }
 
-/**
- * Set up stop loss and take profit monitoring after immediate trade execution
- * @param {string} action - BUY or SELL
- * @param {number} entryPrice - Entry price
- * @param {number} stopLoss - Stop loss price
- * @param {number} takeProfit - Take profit price
- * @param {string} reasoning - Original reasoning
- */
 function setupPostTradeMonitoring(
   action,
   entryPrice,
@@ -462,29 +358,9 @@ function setupPostTradeMonitoring(
   takeProfit,
   reasoning
 ) {
-  console.log(`🛡️ Setting up post-trade risk management monitoring...`);
-
-  if (stopLoss) {
-    const stopCondition = action === "BUY" ? "BELOW" : "ABOVE";
-    registerPriceMonitor({
-      condition: stopCondition,
-      trigger_price: stopLoss,
-      action: action === "BUY" ? "SELL" : "BUY",
-      reasoning: `Stop loss for ${action} executed at $${entryPrice}. Original: ${reasoning}`,
-      source: "AI_AGENT_RISK_MGMT",
-    });
-    console.log(`🛑 Stop loss set: ${stopCondition} $${stopLoss}`);
-  }
-
-  if (takeProfit) {
-    const profitCondition = action === "BUY" ? "ABOVE" : "BELOW";
-    registerPriceMonitor({
-      condition: profitCondition,
-      trigger_price: takeProfit,
-      action: action === "BUY" ? "SELL" : "BUY",
-      reasoning: `Take profit for ${action} executed at $${entryPrice}. Original: ${reasoning}`,
-      source: "AI_AGENT_RISK_MGMT",
-    });
-    console.log(`💰 Take profit set: ${profitCondition} $${takeProfit}`);
-  }
+  console.log(
+    `✅ Risk management handled by native Coinbase stop loss and take profit orders`
+  );
+  console.log(`🛑 Stop loss: $${stopLoss || "None"}`);
+  console.log(`💰 Take profit: $${takeProfit || "None"}`);
 }

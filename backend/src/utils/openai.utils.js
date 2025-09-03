@@ -1,14 +1,3 @@
-import OpenAI from "openai";
-import {
-  tradingFunctions,
-  getAgenticTradingPrompt,
-} from "../config/tradingFunctions.js";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Legacy system prompt (kept for backward compatibility)
 export const systemPrompt = `
 You are a highly specialized trading assistant and expert candlestick chart analyst, trained to interpret technical analysis material, chart patterns, and trading signals using the principles from the "Candlestick Trading Bible" by Munehisa Homma.
 
@@ -46,17 +35,7 @@ Use structured format:
 - Provide comprehensive technical analysis
 - Include pattern identification, support/resistance levels, trend analysis
 - Give specific entry/exit recommendations with price levels
-- **ALWAYS end with a TRADING_SIGNAL JSON block** (see format below)
-
-**TRADING_SIGNAL JSON Format:**
-When analyzing OHLC data for trading decisions, you MUST end your response with:
-
-TRADING_SIGNAL: {"action": "BUY|SELL|WAIT", "trigger_type": "ABOVE|BELOW|EQUAL|IMMEDIATE", "trigger_price": number|null, "stop_loss": number|null, "take_profit": number|null, "confidence": "HIGH|MEDIUM|LOW", "reasoning": "brief explanation"}
-
-**Trading Signal Examples:**
-- For bullish breakout: TRADING_SIGNAL: {"action": "BUY", "trigger_type": "ABOVE", "trigger_price": 108450, "stop_loss": 108300, "take_profit": 108700, "confidence": "HIGH", "reasoning": "Bullish engulfing pattern breaking resistance"}
-- For bearish rejection: TRADING_SIGNAL: {"action": "SELL", "trigger_type": "BELOW", "trigger_price": 108300, "stop_loss": 108500, "take_profit": 108100, "confidence": "MEDIUM", "reasoning": "Shooting star at resistance level"}
-- For uncertain conditions: TRADING_SIGNAL: {"action": "WAIT", "trigger_type": null, "trigger_price": null, "stop_loss": null, "take_profit": null, "confidence": "LOW", "reasoning": "Indecisive doji pattern, wait for confirmation"}
+- **Use trading functions when available** to execute trades directly
 
 **Important Instructions:**
 - **Focus on the User Query:** Always center your answer on the user's specific question
@@ -64,91 +43,92 @@ TRADING_SIGNAL: {"action": "BUY|SELL|WAIT", "trigger_type": "ABOVE|BELOW|EQUAL|I
 - **Never hallucinate:** If information is unclear, state uncertainty or request clarification  
 - **Be Conversational:** For follow-up questions, respond naturally while maintaining expertise
 - **Adapt to Query Type:** Match your response style to the type of question being asked
-- **MANDATORY:** For any OHLC analysis, include the TRADING_SIGNAL JSON block at the end
+- **MANDATORY:** For any OHLC analysis, provide comprehensive technical analysis
 
-Your goal: **provide accurate, helpful trading insights while adapting your response style to the specific query type, and always include trading signals for OHLC analysis.**
+**Examples:**
+
+**Image Analysis Query:**
+User: "What pattern is this?" [image]
+Response: [Structured format with pattern identification]
+
+**Follow-up Question:**
+User: "Are you sure it's a Bullish Engulfing bar?"
+Response: "Yes, I'm confident it's a Bullish Engulfing pattern because the second candle completely engulfs the first bearish candle, showing strong buying pressure. This is a classic reversal signal, especially after a downtrend."
+
+**General Question:**
+User: "What are the key principles of candlestick trading?"
+Response: "Based on the Candlestick Trading Bible, the key principles include..."
+
+**OHLC Analysis Query:**
+User: "📊 **COMPLETED 5-MINUTE CANDLE DATA:** [OHLC data] Please analyze this completed candle..."
+Response: "[Detailed technical analysis with actionable insights and specific price levels]"
+
+Your goal: **provide accurate, helpful trading insights while adapting your response style to the specific query type.**
 `;
 
-/**
- * Run chat completion with optional function calling for AI trading agent
- * @param {Object} options - Configuration options
- * @param {string} options.systemPrompt - System prompt (optional, uses agentic prompt if tickerData provided)
- * @param {Array} options.messages - Chat messages
- * @param {Object} options.tickerData - Live ticker data for agentic trading
- * @param {boolean} options.useFunctionCalling - Enable function calling for AI agent
- * @returns {Object} OpenAI response
+export const tools = [
+  {
+    type: "function",
+    function: {
+      name: "execute_trade",
+      description: "Execute a trade based on analysis",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["BUY", "SELL"] },
+          trigger_condition: {
+            type: "string",
+            enum: ["ABOVE", "BELOW", "IMMEDIATE"],
+          },
+          trigger_price: { type: "number" },
+          stop_loss: { type: "number" },
+          take_profit: { type: "number" },
+          confidence: { type: "string", enum: ["LOW", "MEDIUM", "HIGH"] },
+          reasoning: { type: "string" },
+        },
+        required: [
+          "action",
+          "trigger_condition",
+          "trigger_price",
+          "stop_loss",
+          "take_profit",
+          "confidence",
+          "reasoning",
+        ],
+      },
+    },
+  },
+];
+
+/* export const tools = [
+
+
+
+  {
+    type: "function",
+    name: "execute_trade",
+    description: "Execute a trade based on analysis",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { enum: ["BUY", "SELL"] },
+        trigger_condition: { enum: ["ABOVE", "BELOW", "IMMEDIATE"] },
+        trigger_price: { type: "number" },
+        stop_loss: { type: "number" },
+        take_profit: { type: "number" },
+        confidence: { enum: ["LOW", "MEDIUM", "HIGH"] },
+        reasoning: { type: "string" },
+      },
+      required: [
+        "action",
+        "trigger_condition",
+        "trigger_price",
+        "stop_loss",
+        "take_profit",
+        "confidence",
+        "reasoning",
+      ],
+    },
+  },
+];
  */
-export async function runChatCompletion({
-  systemPrompt: customSystemPrompt,
-  messages,
-  tickerData = null,
-  useFunctionCalling = false,
-}) {
-  // Determine system prompt
-  let finalSystemPrompt;
-  if (useFunctionCalling && tickerData) {
-    // Use agentic trading prompt with live data
-    finalSystemPrompt = getAgenticTradingPrompt(tickerData);
-    console.log("🤖 Using AI Agent mode with function calling enabled");
-    console.log(`📊 Live price context: $${tickerData.price}`);
-  } else {
-    // Use custom or legacy prompt
-    finalSystemPrompt = customSystemPrompt || systemPrompt;
-    console.log("📝 Using standard analysis mode");
-  }
-
-  // Build request configuration
-  const requestConfig = {
-    model: "gpt-4",
-    messages: [{ role: "system", content: finalSystemPrompt }, ...messages],
-  };
-
-  // Add function calling if enabled
-  if (useFunctionCalling) {
-    requestConfig.functions = tradingFunctions;
-    requestConfig.function_call = "auto"; // Let GPT decide when to call functions
-    console.log(
-      `🛠️ Function calling enabled with ${tradingFunctions.length} trading functions`
-    );
-  }
-
-  console.log("🚀 Sending request to OpenAI GPT-4...");
-  const response = await openai.chat.completions.create(requestConfig);
-
-  const choice = response.choices[0];
-
-  // Log response type
-  if (choice.message.function_call) {
-    console.log(
-      `🎯 AI Agent called function: ${choice.message.function_call.name}`
-    );
-    console.log(
-      `📋 Function arguments:`,
-      JSON.parse(choice.message.function_call.arguments)
-    );
-  } else {
-    console.log("💬 AI responded with message content");
-    if (useFunctionCalling) {
-      console.log(
-        "ℹ️ AI chose not to call any functions - likely waiting for confirmation"
-      );
-    }
-  }
-
-  return choice;
-}
-
-/**
- * Legacy function for backward compatibility
- * @deprecated Use runChatCompletion with useFunctionCalling: false instead
- */
-export async function runLegacyChatCompletion({
-  systemPrompt: customSystemPrompt,
-  messages,
-}) {
-  return await runChatCompletion({
-    systemPrompt: customSystemPrompt,
-    messages,
-    useFunctionCalling: false,
-  });
-}

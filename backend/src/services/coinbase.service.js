@@ -4,12 +4,7 @@ import jwt from "jsonwebtoken";
 import axios from "axios";
 import { generateJWT } from "../utils/coinbase.utils.js";
 import { addCandle, getAllCompletedCandles } from "./candleBuffer.service.js";
-import {
-  monitorTickerForSignals,
-  processRAGResponse,
-  isAutoTradingActive,
-  initializeAutoTrading,
-} from "./autoTrading.service.js";
+// Auto trading functionality now handled in openai.controller.js
 
 // State tracking for candle completion detection
 let lastKnownCandleStartTime = null;
@@ -19,36 +14,9 @@ let isConnectionStabilized = false;
 // Store latest ticker data for AI agent
 let latestTickerData = null;
 
-/**
- * Get current ticker data for AI agent
- * @returns {Object|null} Latest ticker data
- */
 export function getCurrentTickerData() {
   return latestTickerData;
 }
-
-/**
- * Reset candle completion tracking (call when WebSocket connects)
- */
-function resetCandleCompletionTracking() {
-  lastKnownCandleStartTime = null;
-  webSocketConnectedAt = new Date();
-  isConnectionStabilized = false;
-
-  // Mark connection as stabilized after 30 seconds
-  setTimeout(() => {
-    isConnectionStabilized = true;
-    console.log(
-      "🟢 WebSocket connection stabilized - candle completion detection enabled"
-    );
-  }, 30000);
-
-  console.log(
-    "🔄 Candle completion tracking reset for new WebSocket connection"
-  );
-}
-
-/* Buy and sell functions */
 
 export async function createOrder(payload) {
   try {
@@ -73,21 +41,9 @@ export async function createOrder(payload) {
       },
       timeout: 10000,
     });
-    console.log("This is the data:", data);
 
-    if (data.success) {
-      console.log("✅ Order created successfully:", data.success_response);
-      return { success: true, data: data.success_response };
-    } else {
-      console.error("❌ Order creation failed:", data.error_response || data);
-      return { success: false, error: data.error_response || data };
-    }
+    return data;
   } catch (error) {
-    console.error("💥 Order creation error:", error.message);
-    if (error.response) {
-      console.error("💥 Coinbase error details:", error.response.data);
-      console.error("💥 Status:", error.response.status);
-    }
     return { success: false, error: error.response?.data || error.message };
   }
 }
@@ -112,216 +68,12 @@ export async function getOrders() {
       },
       timeout: 10000,
     });
-    console.log("This is the data:", data);
-
-    if (data.success) {
-      console.log("✅ Orders retrieved successfully:", data.success_response);
-      return { success: true, data: data.success_response };
-    } else {
-      console.error("❌ Order retrieval failed:", data.error_response || data);
-      return { success: false, error: data.error_response || data };
-    }
+    return data;
   } catch (error) {
-    console.error("💥 Order retrieval error:", error.message);
-    if (error.response) {
-      console.error("💥 Coinbase error details:", error.response.data);
-      console.error("💥 Status:", error.response.status);
-    }
     return { success: false, error: error.response?.data || error.message };
   }
 }
 
-/* End of buy and sell functions */
-
-/**
- * Check for candle completion and trigger RAG analysis
- * @param {Object} candleMessage - Raw WebSocket candle message
- */
-async function checkForCandleCompletion(candleMessage) {
-  try {
-    // Don't process candle completion until connection is stabilized
-    if (!isConnectionStabilized) {
-      console.log(
-        "⏸️ Connection not yet stabilized - skipping candle completion check"
-      );
-      return;
-    }
-
-    if (
-      !candleMessage.events ||
-      !candleMessage.events[0] ||
-      !candleMessage.events[0].candles
-    ) {
-      return;
-    }
-
-    const currentCandle = candleMessage.events[0].candles[0];
-    const currentStartTime = parseInt(currentCandle.start);
-
-    // Only trigger candle completion if we have a previous timestamp AND
-    // enough time has passed (at least 4 minutes) to ensure it's a real completion
-    if (
-      lastKnownCandleStartTime &&
-      currentStartTime !== lastKnownCandleStartTime
-    ) {
-      const timeDifferenceMs =
-        (currentStartTime - lastKnownCandleStartTime) * 1000;
-      const timeDifferenceMinutes = timeDifferenceMs / (1000 * 60);
-
-      // Only trigger if at least 4 minutes have passed (to account for 5-minute candles)
-      // This prevents false triggers from initial WebSocket connection
-      if (timeDifferenceMinutes >= 4) {
-        // Candle completion detected!
-        console.log(`🎯 CANDLE COMPLETION DETECTED!`);
-        console.log(
-          `   Previous: ${new Date(
-            lastKnownCandleStartTime * 1000
-          ).toISOString()}`
-        );
-        console.log(
-          `   Current: ${new Date(currentStartTime * 1000).toISOString()}`
-        );
-        console.log(
-          `   Time difference: ${timeDifferenceMinutes.toFixed(1)} minutes`
-        );
-
-        // Send completed candle to RAG
-        await triggerRAGForCompletedCandle(lastKnownCandleStartTime);
-      } else {
-        console.log(
-          `⏭️ Candle start time changed but only ${timeDifferenceMinutes.toFixed(
-            1
-          )} minutes passed - likely initial connection, not triggering RAG`
-        );
-      }
-    } else if (!lastKnownCandleStartTime) {
-      console.log(
-        `🔄 Initial candle timestamp set: ${new Date(
-          currentStartTime * 1000
-        ).toISOString()}`
-      );
-    } else {
-      console.log(
-        `📊 Same candle period continuing: ${new Date(
-          currentStartTime * 1000
-        ).toISOString()}`
-      );
-    }
-
-    // Update tracking
-    lastKnownCandleStartTime = currentStartTime;
-  } catch (error) {
-    console.error("💥 Error in candle completion check:", error.message);
-  }
-}
-
-/**
- * Send completed candle to RAG for analysis
- * @param {number} completedStartTime - Start time of completed candle
- */
-async function triggerRAGForCompletedCandle(completedStartTime) {
-  try {
-    console.log(
-      `🚀 COMPLETED 5-MIN CANDLE READY FOR RAG: ${new Date(
-        completedStartTime * 1000
-      ).toISOString()}`
-    );
-    console.log(`📊 Fetching actual OHLC data and emitting to frontend...`);
-
-    // Get the completed candle data from buffer
-    const completedCandlesArray = getAllCompletedCandles();
-    if (!completedCandlesArray || completedCandlesArray.length === 0) {
-      console.error("💥 No completed candle data available in buffer");
-      return;
-    }
-
-    // Find the specific completed candle
-    const completedCandle = completedCandlesArray.find(
-      (candle) => candle.start_time === completedStartTime
-    );
-
-    // If we can't find the exact candle, use the most recent one
-    const candleToAnalyze =
-      completedCandle ||
-      (completedCandlesArray.length > 0
-        ? completedCandlesArray[completedCandlesArray.length - 1]
-        : null);
-
-    if (!candleToAnalyze) {
-      console.error(`💥 No suitable candle found for analysis`);
-      return;
-    }
-
-    if (!completedCandle) {
-      console.log(
-        `📊 Using most recent completed candle instead: ${new Date(
-          candleToAnalyze.start_time * 1000
-        ).toISOString()}`
-      );
-    }
-
-    // Format the OHLC data for display
-    const ohlcDisplay = `
-📊 **COMPLETED 5-MINUTE CANDLE DATA:**
-⏰ **Time**: ${new Date(candleToAnalyze.start_time * 1000).toISOString()}
-📈 **Open**: $${candleToAnalyze.open.toLocaleString()}
-📈 **High**: $${candleToAnalyze.high.toLocaleString()}
-📉 **Low**: $${candleToAnalyze.low.toLocaleString()}
-📈 **Close**: $${candleToAnalyze.close.toLocaleString()}
-📊 **Volume**: ${candleToAnalyze.volume} BTC
-🎯 **Product**: ${candleToAnalyze.product_id}
-`;
-
-    // Create completion event for frontend
-    const completionEvent = {
-      type: "candle_completed",
-      timestamp: new Date().toISOString(),
-      completed_candle_time: new Date(
-        candleToAnalyze.start_time * 1000
-      ).toISOString(),
-      completed_start_time: candleToAnalyze.start_time,
-      candle_data: candleToAnalyze,
-      message: `🕯️ **NEW COMPLETED 5-MINUTE CANDLE DETECTED**
-
-${ohlcDisplay}
-
-**🎯 EVENT**: 5-minute candle just completed with final OHLCV values
-
-This candle has just finished and represents the final OHLCV data for this 5-minute period. Please analyze this completed candle in the context of recent market trends and provide any trading insights or pattern observations.
-
-**🔍 ANALYSIS REQUEST**: Based on the OHLC data above, please provide technical analysis for this newly completed 5-minute bar. Look for:
-- **Candle Pattern**: Identify the candlestick pattern (doji, hammer, engulfing, etc.)
-- **Support/Resistance**: Key levels tested or broken
-- **Trend Analysis**: Continuation or reversal signals  
-- **Volume Analysis**: Volume compared to recent averages
-- **Entry/Exit Signals**: Specific trade opportunities
-- **Risk Management**: Stop-loss and take-profit suggestions
-- **Market Psychology**: What this candle tells us about buyer/seller sentiment
-
-Please provide specific, actionable trading insights based on this exact candle data.`,
-    };
-
-    // Emit to all WebSocket listeners (including frontend)
-    for (const fn of listeners) {
-      try {
-        fn(completionEvent);
-      } catch (error) {
-        console.error("💥 Error notifying listener:", error.message);
-      }
-    }
-
-    console.log(
-      `✅ Completion event with OHLC data emitted - frontend should auto-send to active chat`
-    );
-    console.log(
-      `📊 Completed candle: O:$${candleToAnalyze.open} H:$${candleToAnalyze.high} L:$${candleToAnalyze.low} C:$${candleToAnalyze.close} V:${candleToAnalyze.volume}`
-    );
-  } catch (error) {
-    console.error("💥 Error processing completed candle:", error.message);
-  }
-}
-
-/* Websocket code */
 let ws = null;
 let lastMessage = null;
 let lastUrl = "wss://advanced-trade-ws.coinbase.com";
@@ -368,10 +120,6 @@ export function connectToCoinbase(url = lastUrl) {
     // Reset candle completion tracking for fresh start
     resetCandleCompletionTracking();
 
-    // Initialize auto trading
-    initializeAutoTrading();
-
-    // Subscribe to heartbeats to keep connection alive
     console.log("🔔 Subscribing to heartbeats...");
     send({
       type: "subscribe",
@@ -422,8 +170,7 @@ export function connectToCoinbase(url = lastUrl) {
           // Store latest ticker data for AI agent
           latestTickerData = tickerData;
 
-          // Process ticker data for automated trading signals
-          monitorTickerForSignals(tickerData);
+          // Ticker monitoring now handled automatically in openai.controller.js
         }
       } else if (msg.channel === "heartbeats") {
         console.log("💓 Heartbeat received");
@@ -449,6 +196,173 @@ export function connectToCoinbase(url = lastUrl) {
   ws.on("error", (err) => {
     console.error("❌ WS error:", err.message);
   });
+}
+
+/**
+ * Reset candle completion tracking when WebSocket connects
+ */
+function resetCandleCompletionTracking() {
+  lastKnownCandleStartTime = null;
+  webSocketConnectedAt = new Date();
+  isConnectionStabilized = false;
+
+  // Mark connection as stabilized after 30 seconds
+  setTimeout(() => {
+    isConnectionStabilized = true;
+    console.log(
+      "🟢 WebSocket connection stabilized - candle completion detection enabled"
+    );
+  }, 30000);
+
+  console.log(
+    "🔄 Candle completion tracking reset for new WebSocket connection"
+  );
+}
+
+/**
+ * Check for candle completion and trigger RAG analysis
+ */
+async function checkForCandleCompletion(candleMessage) {
+  try {
+    // Don't process until connection is stabilized
+    if (!isConnectionStabilized) {
+      console.log(
+        "⏸️ Connection not yet stabilized - skipping candle completion check"
+      );
+      return;
+    }
+
+    if (
+      !candleMessage.events ||
+      !candleMessage.events[0] ||
+      !candleMessage.events[0].candles
+    ) {
+      return;
+    }
+
+    const currentCandle = candleMessage.events[0].candles[0];
+    const currentStartTime = parseInt(currentCandle.start);
+
+    // Check if this is a new candle (different start time)
+    if (
+      lastKnownCandleStartTime &&
+      currentStartTime !== lastKnownCandleStartTime
+    ) {
+      const timeDifferenceMs =
+        (currentStartTime - lastKnownCandleStartTime) * 1000;
+      const timeDifferenceMinutes = timeDifferenceMs / (1000 * 60);
+
+      // Only trigger if at least 4 minutes have passed (to avoid false triggers)
+      if (timeDifferenceMinutes >= 4) {
+        console.log(`🎯 CANDLE COMPLETION DETECTED!`);
+        console.log(
+          `   Previous: ${new Date(
+            lastKnownCandleStartTime * 1000
+          ).toISOString()}`
+        );
+        console.log(
+          `   Current: ${new Date(currentStartTime * 1000).toISOString()}`
+        );
+
+        // Send completed candle to RAG
+        await triggerRAGForCompletedCandle(lastKnownCandleStartTime);
+      }
+    }
+
+    // Update tracking
+    lastKnownCandleStartTime = currentStartTime;
+  } catch (error) {
+    console.error("💥 Error in candle completion check:", error.message);
+  }
+}
+
+/**
+ * Send completed candle to RAG for analysis
+ */
+async function triggerRAGForCompletedCandle(completedStartTime) {
+  try {
+    console.log(
+      `🚀 COMPLETED 5-MIN CANDLE READY FOR RAG: ${new Date(
+        completedStartTime * 1000
+      ).toISOString()}`
+    );
+
+    // Get the completed candle data from buffer
+    const completedCandlesArray = getAllCompletedCandles();
+    if (!completedCandlesArray || completedCandlesArray.length === 0) {
+      console.error("💥 No completed candle data available in buffer");
+      return;
+    }
+
+    // Find the specific completed candle or use the most recent one
+    const completedCandle =
+      completedCandlesArray.find(
+        (candle) => candle.start_time === completedStartTime
+      ) || completedCandlesArray[completedCandlesArray.length - 1];
+
+    if (!completedCandle) {
+      console.error(`💥 No suitable candle found for analysis`);
+      return;
+    }
+
+    // Format the OHLC data for display
+    const ohlcDisplay = `
+📊 **COMPLETED 5-MINUTE CANDLE DATA:**
+⏰ **Time**: ${new Date(completedCandle.start_time * 1000).toISOString()}
+📈 **Open**: $${completedCandle.open.toLocaleString()}
+📈 **High**: $${completedCandle.high.toLocaleString()}
+📉 **Low**: $${completedCandle.low.toLocaleString()}
+📈 **Close**: $${completedCandle.close.toLocaleString()}
+📊 **Volume**: ${completedCandle.volume} BTC
+🎯 **Product**: ${completedCandle.product_id}
+`;
+
+    // Create completion event for frontend
+    const completionEvent = {
+      type: "candle_completed",
+      timestamp: new Date().toISOString(),
+      completed_candle_time: new Date(
+        completedCandle.start_time * 1000
+      ).toISOString(),
+      candle_data: completedCandle,
+      message: `🕯️ **NEW COMPLETED 5-MINUTE CANDLE DETECTED**
+
+${ohlcDisplay}
+
+**🎯 EVENT**: 5-minute candle just completed with final OHLCV values
+
+This candle has just finished and represents the final OHLCV data for this 5-minute period. 
+Please analyze this completed candle in the context of recent market trends sent earlier and provide any trading insights or pattern observations.
+You have received a list of tools with function and parameters to use for placing a trade.
+Please analyze the candle data and define which tool to use and define parameters for the tool so trade can be placed on coinbase.
+
+**🔍 ANALYSIS REQUEST**: Based on the OHLC data above, please provide technical analysis for this newly completed 5-minute bar. Look for:
+- **Candle Pattern**: Identify the candlestick pattern (doji, hammer, engulfing, etc.)
+- **Support/Resistance**: Key levels tested or broken
+- **Trend Analysis**: Continuation or reversal signals  
+- **Volume Analysis**: Volume compared to recent averages
+- **Entry/Exit Signals**: Specific trade opportunities
+- **Risk Management**: Stop-loss and take-profit suggestions
+- **Market Psychology**: What this candle tells us about buyer/seller sentiment
+
+Based upon your knowledge of the market and the tools available and the rules from The Candlestick Trading Bible, insert the right values into the tools parameters so a trade can be placed.`,
+    };
+
+    // Emit to all WebSocket listeners (including frontend)
+    for (const fn of listeners) {
+      try {
+        fn(completionEvent);
+      } catch (error) {
+        console.error("💥 Error notifying listener:", error.message);
+      }
+    }
+
+    console.log(
+      `✅ Completion event with OHLC data emitted - frontend should auto-send to active chat`
+    );
+  } catch (error) {
+    console.error("💥 Error processing completed candle:", error.message);
+  }
 }
 
 export function subscribe(channel, product_ids) {
