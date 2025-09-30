@@ -5,13 +5,13 @@ const ChatSidebar = ({ chats, onNewChat, onChatSelect, activeChatId }) => {
   const [editingChatId, setEditingChatId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
 
-  useEffect(() => {
+  /*   useEffect(() => {
     console.log("editTitle state changed to:", editTitle);
   }, [editTitle]);
 
   useEffect(() => {
     console.log("editingChatId state changed to:", editingChatId);
-  }, [editingChatId]);
+  }, [editingChatId]); */
 
   const handleDeleteChat = (e, chatId) => {
     e.stopPropagation(); // Prevent chat selection when clicking delete

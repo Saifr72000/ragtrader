@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import "./ChatView.css";
 import { apiService } from "../services/api";
-import WebSocketDashboard from "../components/WebSocketDashboard";
+import WebSocketDashboard from "../components/WebSocket/WebSocketDashboard";
 
 const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [inputMessage, setInputMessage] = useState("");
@@ -242,7 +242,11 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
   return (
     <div className="chat-view">
       <div className="chat-header">
-        <h2>{`${activeChat?.title} ${activeChat?.id}` || "New Chat"}</h2>
+        <h2>
+          {activeChat?.title
+            ? `${activeChat.title} ${activeChat.id}`
+            : "New Chat"}
+        </h2>
       </div>
 
       {/* WebSocket Dashboard */}

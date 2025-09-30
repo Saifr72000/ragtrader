@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./WebSocketDashboard.css";
-import { apiService } from "../services/api";
+import { apiService } from "../../services/api";
 
 const WebSocketDashboard = React.memo((props) => {
   const [isConnected, setIsConnected] = useState(false);

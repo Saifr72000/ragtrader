@@ -1,0 +1,227 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+### Components (Reusable UI)
+- **Location**: `src/components/`
+- **Structure**: Each component gets its own folder
+  ```
+  src/components/
+    ComponentName/
+      ComponentName.jsx    # Component logic
+      ComponentName.css    # Component styles
+  ```
+- **Rules**:
+  - Use PascalCase for folder and file names
+  - Keep components pure when possible (props in → JSX out)
+  - No direct API calls in components (use hooks or pass props)
+  - Export as default: `export default ComponentName;`
+
+### Layouts (Page Templates)
+- **Location**: `src/layout/`
+- **Purpose**: Structural wrappers that compose multiple components
+- **Examples**: 
+  - `AppLayout.jsx` - Main app shell (sidebars + routing)
+  - `ChatView.jsx` - Chat area container
+- **Rules**:
+  - Layouts orchestrate components but don't handle business logic
+  - Can connect to hooks for data
+  - Use Context for deeply nested state
+  - Keep layout files under 300 lines (split if larger)
+
+### Custom Hooks (Reusable Logic)
+- **Location**: `src/hooks/`
+- **Naming**: `use` prefix (e.g., `useChats.js`, `useMessages.js`)
+- **When to create**:
+  - Repetitive API calls across components
+  - Complex state logic used in multiple places
+  - WebSocket connections
+  - Form handling
+- **Structure**:
+  ```javascript
+  // hooks/useChats.js
+  export function useChats() {
+    const [chats, setChats] = useState([]);
+    const [loading, setLoading] = useState(false);
+    
+    useEffect(() => {
+      // Fetch logic
+    }, []);
+    
+    return { chats, loading, createChat, deleteChat };
+  }
+  ```
+
+### Pages vs Views
+- **Current Architecture**: Single-page app (SPA) with chat interface
+- **No `pages/` folder needed** - AppLayout is the only "page"
+- **Views**: Different sections within AppLayout (ChatView, no routing)
+- **If adding routes later**: Create `src/pages/` with route-level components
+
+## Import Path Conventions
+
+### Correct Import Paths
+```javascript
+// Component in folder
+import ChatSidebar from '../components/ChatSidebar/ChatSidebar';
+
+// Hook
+import { useChats } from '../hooks/useChats';
+
+// Service
+import { apiService } from '../services/api';
+
+// Layout (same level)
+import ChatView from './ChatView';
+```
+
+### Common Mistakes
+```javascript
+// ❌ Wrong - missing nested path
+import ChatSidebar from '../components/ChatSidebar';
+
+// ✅ Correct
+import ChatSidebar from '../components/ChatSidebar/ChatSidebar';
+```
+
+## Component Responsibilities
+
+### Smart vs Dumb Pattern
+**Smart (Container) Components**:
+- Fetch data via hooks or API calls
+- Manage local state
+- Handle business logic
+- Pass data down as props
+
+**Dumb (Presentational) Components**:
+- Receive data via props
+- No API calls or complex state
+- Focus on UI rendering
+- Emit events via callbacks
+
+### Example Refactor Needed
+```javascript
+// ❌ Bad: Component does everything
+function ChatList() {
+  const [chats, setChats] = useState([]);
+  useEffect(() => {
+    fetch('/api/chats').then(/* ... */);
+  }, []);
+  return <div>{chats.map(/* ... */)}</div>;
+}
+
+// ✅ Good: Split responsibilities
+function ChatListContainer() {
+  const { chats, loading } = useChats(); // Hook handles data
+  return <ChatList chats={chats} loading={loading} />;
+}
+
+function ChatList({ chats, loading }) {
+  if (loading) return <Spinner />;
+  return <div>{chats.map(/* ... */)}</div>;
+}
+```
+
+## When to Create New Files
+
+### Create Component When:
+- UI element is reused 2+ times
+- Component exceeds 200 lines
+- Logic is distinct and testable
+
+### Create Hook When:
+- API call pattern repeats 2+ times
+- State logic is complex (>50 lines)
+- Need to share logic across components
+
+### Keep in Layout When:
+- Only used once in that layout
+- Tightly coupled to layout structure
+- Moving it creates more complexity
+
+## Anti-Patterns to Avoid
+
+### ❌ Don't
+```javascript
+// God component (500+ lines)
+function AppLayout() {
+  // 50 state variables
+  // API calls inline
+  // Business logic mixed with UI
+}
+
+// Direct API call in component
+function ChatItem() {
+  const handleDelete = () => {
+    fetch('/api/delete').then(/* ... */);
+  };
+}
+
+// Prop drilling 4+ levels deep
+<A data={data}>
+  <B data={data}>
+    <C data={data}>
+      <D data={data} />
+```
+
+### ✅ Do
+```javascript
+// Use hooks for data
+function ChatContainer() {
+  const { chats } = useChats();
+  return <ChatList chats={chats} />;
+}
+
+// Use Context for deep state
+<ChatContext.Provider value={chats}>
+  <App />
+</ChatContext.Provider>
+
+// Keep components focused
+function ChatItem({ chat, onDelete }) {
+  return (
+    <div onClick={() => onDelete(chat.id)}>
+      {chat.title}
+    </div>
+  );
+}
+```
+
+## Current Refactor Priorities
+
+1. Extract `useChats` hook from AppLayout
+2. Extract `useMessages` hook from AppLayout
+3. Split WebSocketDashboard into smaller components
+4. Create ChatContext to avoid prop drilling
+5. Move drag-resize logic to `useDragResize` hook
+
+## Quick Reference
+
+| Pattern | Location | Example |
+|---------|----------|---------|
+| Reusable UI | `components/` | Button, ChatItem, Modal |
+| Page template | `layout/` | AppLayout, ChatView |
+| Data fetching | `hooks/` | useChats, useMessages |
+| API client | `services/` | apiService.getChatHistory() |
+| Global state | `context/` | ChatContext, AuthContext |
+| Utils | `utils/` | formatDate, truncateText |
+
+## Before Creating a File, Ask:
+
+1. Is this UI reused? → Component
+2. Is this data logic reused? → Hook
+3. Is this a page shell? → Layout
+4. Does it fit elsewhere? → Keep it local
+
+## Naming Conventions
+
+- **Components**: PascalCase (`ChatSidebar.jsx`)
+- **Hooks**: camelCase with `use` prefix (`useChats.js`)
+- **Utilities**: camelCase (`formatDate.js`)
+- **CSS**: Match component name (`ChatSidebar.css`)
+- **Folders**: PascalCase for components, lowercase for others
+
+---
+
+**Summary**: Keep components small, extract repeated logic to hooks, use layouts for structure, avoid prop drilling with Context.

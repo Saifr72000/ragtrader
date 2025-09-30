@@ -1,0 +1,21 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: "Enforce MVC + Service Layer: All business logic must be placed in Service classes, not in Controllers or Models"
+globs:
+  - "backend/**/*.ts"
+  - "services/**/*.ts"
+  - "controllers/**/*.ts"
+type: autoAttached
+---
+# Backend Code Structure Rule
+
+- All business logic must be implemented in the service layer.
+- Controllers are only responsible for handling HTTP/request input/output, delegating logic to services.
+- Models should contain only schema/ORM definitions—no business logic.
+- Service classes must not access request/response objects directly.
+
+**Correct Example (in Service):**

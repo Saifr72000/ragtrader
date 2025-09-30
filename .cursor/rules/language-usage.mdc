@@ -1,0 +1,33 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+title: No Emojis Policy (Frontend + Backend)
+
+scope:
+  - All generated code, comments, logs, prompts, test names, commit messages, and UI copy.
+
+rules:
+  - Do not output or include emojis or decorative symbols.
+  - Use plain, professional text with clear tags instead (e.g., [INFO], [ERROR], [WARN]).
+  - Avoid Unicode glyphs that act as emoji substitutes.
+
+rationale:
+  - Improves readability, searchability, accessibility, and consistency across environments.
+
+examples:
+  - Bad:
+    - console.log("App started");
+    - console.error("Operation failed");
+    - // Temporary: feature flag enabled
+    - return "New trade placed at price";
+  - Good:
+    - console.log("[STARTUP] App started");
+    - console.error("[ERROR] Operation failed");
+    - // Temporary: feature flag enabled
+    - return "New trade placed at price";
+
+enforcement:
+  - If a prior file includes emojis, remove them in subsequent edits.
+  - Prefer structured prefixes: [STARTUP], [INFO], [WARN], [ERROR], [DEBUG].
