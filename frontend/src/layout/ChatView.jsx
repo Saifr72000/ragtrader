@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import "./ChatView.css";
-import { apiService } from "../services/api";
 import WebSocketDashboard from "../components/WebSocket/WebSocketDashboard";
 import usePolygonBars from "../hooks/usePolygonBars";
+import ChatMessages from "../components/ChatMessages/ChatMessages";
 
 const ChatView = ({ messages, onSendMessage, activeChat }) => {
   const [inputMessage, setInputMessage] = useState("");
@@ -123,64 +123,8 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
         onSendMessage={onSendMessage}
         activeChatId={activeChat?.id}
       />
-
-      <div className="messages-container">
-        {messages.length === 0 ? (
-          <div className="empty-state">
-            <h3>Start a new conversation</h3>
-            <p>
-              Ask me anything about trading, candlestick patterns, or market
-              analysis.
-            </p>
-          </div>
-        ) : (
-          <div className="messages-list">
-            {messages.map((message) => (
-              <div
-                key={message._id}
-                className={`message ${
-                  message.role === "user" ? "user-message" : "assistant-message"
-                } ${message.isPending ? "pending" : ""}`}
-              >
-                <div className="message-content">
-                  {message.role === "user" &&
-                  message.content &&
-                  message.content.length > 0 ? (
-                    <>
-                      {message.content[0].text && (
-                        <p>{message.content[0].text}</p>
-                      )}
-                      {message.content[0].image_url && (
-                        <img
-                          src={message.content[0].image_url}
-                          alt="uploaded"
-                          className="chat-image-preview"
-                        />
-                      )}
-                    </>
-                  ) : message.role === "assistant" &&
-                    message.content &&
-                    message.content.length > 0 ? (
-                    <p>{message.content[0].text}</p>
-                  ) : (
-                    <p>Message content not available</p>
-                  )}
-                  <span className="message-timestamp">
-                    {new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {message.isPending && message.role === "assistant" && (
-                      <span className="pending-indicator"> ⏳</span>
-                    )}
-                  </span>
-                </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
+      {/* Chat Messages */}
+      <ChatMessages messages={messages} messagesEndRef={messagesEndRef} />
 
       <div
         className={`input-container${isDragActive ? " drag-active" : ""}`}
@@ -242,7 +186,6 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                 </button>
               </div>
 
-              {/* Top horizontal controls */}
               <div className="bars-controls-top">
                 <label>Ticker</label>
                 <input
@@ -349,7 +292,6 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                 </button>
               </div>
 
-              {/* Two text boxes: left raw, right filtered */}
               <div className="bars-body">
                 <div className="bars-preview-wrap">
                   <label>Fetched (raw)</label>
@@ -375,7 +317,6 @@ const ChatView = ({ messages, onSendMessage, activeChat }) => {
                   type="button"
                   className="bars-btn"
                   onClick={() => handleInsertBars(setInputMessage)}
-                  /* onClick={handleInsertBars} */
                   disabled={!barsBlock}
                 >
                   Attach

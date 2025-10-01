@@ -6,6 +6,7 @@ import useDragResize from "../hooks/useDragResize";
 import useChat from "../hooks/useChat";
 
 const AppLayout = () => {
+  /* Draggable resizing of sidebars */
   const {
     sidebarWidth,
     isDragging,
@@ -21,6 +22,7 @@ const AppLayout = () => {
     setIsRightSidebarVisible,
   } = useDragResize();
 
+  /* Chat logic */
   const {
     error,
     chats,
