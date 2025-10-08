@@ -5,8 +5,8 @@
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node api.js && node src/app.js",
+    "dev": "node api.js && nodemon src/app.js",
     "check-urls": "node src/scripts/checkImageUrls.js",
     "check-urls-quick": "node src/scripts/checkImageUrls.js quick"
   },
